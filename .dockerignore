@@ -1,0 +1,31 @@
+# Secrets / local env — never bake into the image (Coolify injects env vars at runtime)
+.env
+.env.*
+
+# Unrelated legacy project in this workspace
+LIvekitAIVoice-main/
+
+# Python caches / build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+build/
+dist/
+
+# Local virtualenvs
+venv/
+.venv/
+env/
+
+# VCS / editor / OS cruft
+.git/
+.gitignore
+.DS_Store
+*.log
+
+# Node (if any tooling leaks in)
+node_modules/
