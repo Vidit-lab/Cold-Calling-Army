@@ -14,12 +14,14 @@ echo "   Gemini: ${GEMINI_MODEL:-gemini-3.1-flash-live-preview}"
 echo "   Supabase: ${SUPABASE_URL}"
 
 echo "🌐 Starting FastAPI server on port 8000..."
-uvicorn server:app --host 0.0.0.0 --port 8000 &
+uvicorn server:app --host 0.0.0.0 --port 8000 --log-level info &
 SERVER_PID=$!
 
 sleep 2
 
 echo "🤖 Starting LiveKit agent worker..."
-python agent.py start
+python agent.py start &
+AGENT_PID=$!
 
-kill $SERVER_PID 2>/dev/null || true
+# Keep container running - wait for both processes
+wait
