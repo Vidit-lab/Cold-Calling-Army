@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AuraOutboundAI — Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Geist:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#08051A;
+  /* neon glow palette */
+  --purple:#7C3AED; --pink:#EC4899; --orange:#F97316; --rose:#FB7185;
+  /* glass surfaces */
+  --card:rgba(255,255,255,.05); --card-strong:rgba(255,255,255,.08);
+  --border:rgba(124,58,237,.22); --border-strong:rgba(124,58,237,.34);
+  --accent:#A78BFA; --accent2:#F0ABFC; --danger:#FB7185; --warn:#F97316;
+  --muted:#8B83A8; --text:#FFFFFF; --text2:#CBD5E1;
+  --mono:'Geist Mono',ui-monospace,'SF Mono',monospace;
+  --sans:'Inter','Geist','SF Pro Display',system-ui,-apple-system,sans-serif;
+  --r:16px; --r-sm:8px;
+}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--text);font-family:var(--sans);
+  min-height:100vh;line-height:1.55;font-size:14px;
+  -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+  position:relative;overflow-x:hidden;letter-spacing:.1px;
+}
+a{color:var(--accent2);text-decoration:none;transition:color .15s}
+a:hover{color:#C4B5FD}
+
+header{display:flex;align-items:center;justify-content:space-between;padding:18px 28px;
+  border-bottom:1px solid var(--border);background:rgba(8,5,26,.55);backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);position:sticky;top:0;z-index:50}
+header h1{font-size:19px;font-weight:700;letter-spacing:-.2px;
+  background:linear-gradient(90deg,#A78BFA,#F0ABFC 50%,#FDBA74);-webkit-background-clip:text;background-clip:text;color:transparent}
+header h1 span{font-weight:400;font-size:13px;-webkit-text-fill-color:var(--text2);color:var(--text2)}
+.status-dot{display:inline-block;width:9px;height:9px;border-radius:50%;background:#34D399;margin-right:7px;
+  box-shadow:0 0 10px #34D399,0 0 4px #34D399;animation:pulse 2.4s ease-in-out infinite}
+@keyframes pulse{50%{opacity:.45}}
+
+nav{display:flex;flex-wrap:wrap;gap:6px;padding:12px 20px;border-bottom:1px solid var(--border);
+  background:rgba(8,5,26,.40);backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);position:sticky;top:59px;z-index:40}
+nav button{background:transparent;border:1px solid transparent;color:var(--text2);padding:8px 14px;
+  border-radius:12px;cursor:pointer;font-size:13px;font-weight:500;font-family:var(--sans);transition:all .18s}
+nav button:hover{color:var(--text);background:rgba(255,255,255,.06)}
+nav button.active{color:#fff;background:linear-gradient(135deg,rgba(124,58,237,.36),rgba(236,72,153,.30));
+  border-color:rgba(167,139,250,.5);box-shadow:0 0 20px rgba(124,58,237,.40),inset 0 1px 0 rgba(255,255,255,.10)}
+
+main{padding:30px 24px;max-width:1320px;margin:0 auto}
+.panel{display:none}
+.panel.active{display:block;animation:fade .35s cubic-bezier(.2,.7,.2,1)}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+h2{font-size:20px;margin-bottom:20px;color:#FFFFFF;font-weight:700;letter-spacing:-.3px}
+h3{font-size:14px;margin-bottom:14px;font-weight:600;letter-spacing:.2px;
+  background:linear-gradient(90deg,#C4B5FD,#F9A8D4);-webkit-background-clip:text;background-clip:text;color:transparent}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:22px;margin-bottom:22px;
+  backdrop-filter:blur(22px) saturate(130%);-webkit-backdrop-filter:blur(22px) saturate(130%);
+  box-shadow:0 8px 40px rgba(2,6,23,.45),inset 0 1px 0 rgba(255,255,255,.06)}
+.grid{display:grid;gap:18px}
+.kpi-grid{grid-template-columns:repeat(auto-fit,minmax(170px,1fr))}
+.kpi{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:20px;
+  backdrop-filter:blur(22px) saturate(130%);-webkit-backdrop-filter:blur(22px) saturate(130%);
+  box-shadow:0 8px 30px rgba(2,6,23,.45),inset 0 1px 0 rgba(255,255,255,.06);
+  position:relative;overflow:hidden;transition:all .2s}
+.kpi::before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,rgba(124,58,237,.12),transparent 60%);pointer-events:none}
+.kpi:hover{transform:translateY(-2px);box-shadow:0 14px 44px rgba(2,6,23,.45),0 0 20px rgba(124,58,237,.30),inset 0 1px 0 rgba(255,255,255,.08)}
+.kpi .num{font-size:30px;font-weight:700;letter-spacing:-.5px;
+  background:linear-gradient(120deg,#C4B5FD,#F0ABFC,#FDBA74);-webkit-background-clip:text;background-clip:text;color:transparent}
+.kpi .lbl{font-size:11px;color:var(--text2);margin-top:5px;text-transform:uppercase;letter-spacing:.7px;font-weight:500}
+.chip{display:inline-block;background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:20px;
+  padding:5px 13px;font-size:12px;margin:3px;color:var(--text2)}
+.chip b{color:#F0ABFC;font-weight:600}
+
+label{display:block;font-size:11px;color:var(--text2);margin:12px 0 5px;text-transform:uppercase;letter-spacing:.6px;font-weight:500}
+input,select,textarea{width:100%;background:rgba(8,5,26,.55);border:1px solid var(--border);border-radius:var(--r-sm);
+  color:var(--text);padding:10px 13px;font-size:14px;font-family:var(--sans);transition:border-color .15s,box-shadow .15s}
+input::placeholder,textarea::placeholder{color:#6B647F}
+input:focus,select:focus,textarea:focus{outline:none;border-color:rgba(167,139,250,.65);box-shadow:0 0 12px rgba(124,58,237,.30)}
+select option{background:#120B2E;color:var(--text)}
+textarea{resize:vertical;min-height:90px;font-family:var(--mono);font-size:13px;line-height:1.6}
+.row{display:flex;gap:14px;flex-wrap:wrap}
+.row>div{flex:1;min-width:160px}
+
+button.btn{background:linear-gradient(135deg,#7C3AED,#EC4899 70%,#F97316);color:#fff;border:none;border-radius:12px;
+  padding:11px 20px;font-size:14px;font-weight:600;font-family:var(--sans);cursor:pointer;margin-top:16px;
+  box-shadow:0 6px 20px rgba(124,58,237,.40),inset 0 1px 0 rgba(255,255,255,.18);transition:transform .15s,box-shadow .2s,filter .2s}
+button.btn:hover{transform:translateY(-1px);box-shadow:0 10px 28px rgba(236,72,153,.50),inset 0 1px 0 rgba(255,255,255,.22)}
+button.btn:active{transform:translateY(0)}
+button.btn.sec{background:rgba(255,255,255,.06);color:var(--text);border:1px solid var(--border-strong);box-shadow:none}
+button.btn.sec:hover{background:rgba(255,255,255,.10);box-shadow:0 4px 16px rgba(124,58,237,.25)}
+button.btn.danger{background:linear-gradient(135deg,#FB7185,#BE123C);color:#fff;box-shadow:0 6px 20px rgba(251,113,133,.38)}
+button.btn.small{padding:6px 12px;font-size:12px;margin-top:0;border-radius:9px}
+
+table{width:100%;border-collapse:collapse;font-size:13px}
+th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--border)}
+th{color:var(--text2);font-size:11px;text-transform:uppercase;letter-spacing:.6px;font-weight:600}
+tr:hover td{background:rgba(255,255,255,.035)}
+.badge{display:inline-block;padding:3px 11px;border-radius:20px;font-size:11px;font-weight:600;border:1px solid transparent}
+.b-booked{background:rgba(52,211,153,.14);color:#6EE7B7;border-color:rgba(52,211,153,.30)}
+.b-not_interested{background:rgba(244,63,94,.14);color:#FDA4AF;border-color:rgba(244,63,94,.30)}
+.b-voicemail,.b-no_answer{background:rgba(245,158,11,.14);color:#FCD34D;border-color:rgba(245,158,11,.28)}
+.b-wrong_number,.b-callback_requested,.b-unknown{background:rgba(148,163,184,.12);color:#CBD5E1;border-color:var(--border)}
+.b-info{background:rgba(124,58,237,.18);color:#C4B5FD;border-color:rgba(124,58,237,.34)}
+.b-warning{background:rgba(245,158,11,.14);color:#FCD34D;border-color:rgba(245,158,11,.28)}
+.b-error{background:rgba(244,63,94,.14);color:#FDA4AF;border-color:rgba(244,63,94,.30)}
+.b-active{background:rgba(52,211,153,.14);color:#6EE7B7;border-color:rgba(52,211,153,.30)}
+.b-paused{background:rgba(245,158,11,.14);color:#FCD34D;border-color:rgba(245,158,11,.28)}
+.b-completed{background:rgba(148,163,184,.12);color:#CBD5E1;border-color:var(--border)}
+.muted{color:var(--muted);font-size:12px}
+.err{color:#FDA4AF;font-size:12px;margin-top:6px;min-height:16px}
+
+.toast{position:fixed;bottom:26px;right:26px;background:rgba(18,11,46,.85);border:1px solid rgba(167,139,250,.45);
+  border-radius:14px;padding:14px 20px;font-size:13px;z-index:200;color:var(--text);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  box-shadow:0 12px 40px rgba(2,6,23,.6),0 0 24px rgba(124,58,237,.35);max-width:360px;animation:fade .3s ease}
+.toast.err{border-color:rgba(251,113,133,.5);box-shadow:0 12px 40px rgba(2,6,23,.6),0 0 24px rgba(251,113,133,.32)}
+.charts{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.charts .card{margin:0}
+.chart-wrap{position:relative;height:260px}
+.chart-wrap.wide{grid-column:1/-1}
+.progress{height:8px;background:rgba(8,5,26,.6);border:1px solid var(--border);border-radius:6px;overflow:hidden;margin-top:12px}
+.progress>div{height:100%;background:linear-gradient(90deg,#7C3AED,#EC4899);width:0;transition:width .3s;box-shadow:0 0 12px rgba(236,72,153,.6)}
+.hide{display:none!important}
+.eye{position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--muted);font-size:13px;background:none;border:none}
+.field-wrap{position:relative}
+.configured{color:#6EE7B7;font-size:11px;margin-left:6px}
+.tool-toggle{display:inline-flex;align-items:center;gap:7px;background:rgba(255,255,255,.05);border:1px solid var(--border);
+  border-radius:10px;padding:7px 12px;margin:4px;font-size:12px;cursor:pointer;transition:background .15s,border-color .15s}
+.tool-toggle:hover{background:rgba(255,255,255,.09);border-color:var(--border-strong)}
+.tool-toggle input{width:auto;accent-color:var(--purple)}
+input[type=checkbox]{accent-color:var(--purple)}
+.pagination{display:flex;gap:8px;align-items:center;margin-top:16px}
+.drill{background:rgba(8,5,26,.45);border:1px solid var(--border);border-radius:var(--r);padding:18px;margin-top:16px;
+  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+small.cnt{color:var(--muted);font-size:11px;float:right}
+ol code,p code{background:rgba(124,58,237,.16);border:1px solid rgba(124,58,237,.3);border-radius:6px;padding:1px 7px;font-family:var(--mono);font-size:12px;color:#C4B5FD}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{background:rgba(124,58,237,.35);border-radius:8px;border:3px solid transparent;background-clip:content-box}
+::-webkit-scrollbar-thumb:hover{background:rgba(124,58,237,.55);background-clip:content-box}
+</style>
+</head>
+<body>
+<header>
+  <h1>⚡ AuraOutboundAI <span>— AI Voice Calling Platform</span></h1>
+  <div><span class="status-dot"></span><span class="muted" id="hdr-status">connected</span></div>
+</header>
+
+<nav id="nav">
+  <button data-tab="stats" class="active">📊 Stats</button>
+  <button data-tab="single">📞 Single Call</button>
+  <button data-tab="batch">📋 Batch Call</button>
+  <button data-tab="campaigns">🚀 Campaigns</button>
+  <button data-tab="agents">🤖 Agents</button>
+  <button data-tab="prompt">✏️ AI Prompt</button>
+  <button data-tab="appts">📅 Appointments</button>
+  <button data-tab="calls">📝 Call Logs</button>
+  <button data-tab="crm">👥 CRM</button>
+  <button data-tab="logs">📋 Logs</button>
+  <button data-tab="setup">🔧 Setup</button>
+</nav>
+
+<main>
+
+<!-- ═══ STATS ═══ -->
+<section class="panel active" id="panel-stats">
+  <h2>📊 Performance Overview</h2>
+  <div class="grid kpi-grid" id="kpi-grid">
+    <div class="kpi"><div class="num" id="k-total">0</div><div class="lbl">Total Calls</div></div>
+    <div class="kpi"><div class="num" id="k-booked">0</div><div class="lbl">Booked</div></div>
+    <div class="kpi"><div class="num" id="k-ni">0</div><div class="lbl">Not Interested</div></div>
+    <div class="kpi"><div class="num" id="k-rate">0%</div><div class="lbl">Booking Rate</div></div>
+    <div class="kpi"><div class="num" id="k-dur">0s</div><div class="lbl">Avg Duration</div></div>
+  </div>
+  <div class="card" style="margin-top:20px">
+    <h3>Live Configuration</h3>
+    <div id="live-config"><span class="muted">loading…</span></div>
+  </div>
+  <div class="charts">
+    <div class="card"><h3>Outcomes</h3><div class="chart-wrap"><canvas id="chart-outcomes"></canvas></div></div>
+    <div class="card"><h3>Avg Duration by Outcome</h3><div class="chart-wrap"><canvas id="chart-duration"></canvas></div></div>
+    <div class="card" style="grid-column:1/-1"><h3>Calls — Last 14 Days</h3><div class="chart-wrap"><canvas id="chart-timeline"></canvas></div></div>
+  </div>
+</section>
+
+<!-- ═══ SINGLE CALL ═══ -->
+<section class="panel" id="panel-single">
+  <h2>📞 Single Call</h2>
+  <div class="card">
+    <form id="call-form">
+      <div class="row">
+        <div><label>Phone (E.164)</label><input id="f-phone" placeholder="+919876543210" required></div>
+        <div><label>Lead Name</label><input id="f-lead" placeholder="Shreyas" value="there"></div>
+      </div>
+      <div class="row">
+        <div><label>Business Name</label><input id="f-biz" placeholder="Acme Dental" value="our company"></div>
+        <div><label>Service Type</label><input id="f-service" placeholder="dental checkup" value="our service"></div>
+      </div>
+      <label>Agent Profile</label>
+      <select id="f-agent-profile"><option value="">— None (use global prompt) —</option></select>
+      <label style="margin-top:14px"><input type="checkbox" id="f-custom-toggle" style="width:auto;margin-right:6px">Use custom prompt for this call</label>
+      <div id="f-custom-wrap" class="hide"><textarea id="f-custom" placeholder="Custom system prompt…"></textarea></div>
+      <button type="submit" class="btn">📞 Dispatch Call</button>
+      <div class="err" id="call-err"></div>
+    </form>
+  </div>
+</section>
+
+<!-- ═══ BATCH CALL ═══ -->
+<section class="panel" id="panel-batch">
+  <h2>📋 Batch Call (CSV)</h2>
+  <div class="card">
+    <p class="muted">CSV columns: <b>phone,lead_name,business_name,service_type</b> (only phone required).</p>
+    <label>Agent Profile</label>
+    <select id="bc-agent-profile"><option value="">— None (use global prompt) —</option></select>
+    <div class="row">
+      <div><label>CSV File</label><input type="file" id="bc-file" accept=".csv"></div>
+      <div><label>Delay Between Calls (s)</label><input type="number" id="bc-delay" value="3" min="0"></div>
+    </div>
+    <button class="btn sec" id="bc-parse">📄 Parse CSV</button>
+    <div id="bc-preview"></div>
+    <button class="btn" id="bc-start" disabled>🚀 Start Batch</button>
+    <div class="progress"><div id="bc-bar"></div></div>
+    <div class="muted" id="bc-status" style="margin-top:8px"></div>
+    <div class="err" id="bc-err"></div>
+  </div>
+</section>
+
+<!-- ═══ CAMPAIGNS ═══ -->
+<section class="panel" id="panel-campaigns">
+  <h2>🚀 Campaigns</h2>
+  <div class="card">
+    <h3>Create Campaign</h3>
+    <div class="row">
+      <div><label>Campaign Name</label><input id="camp-name" placeholder="April Promo"></div>
+      <div><label>Schedule</label><select id="camp-sched"><option value="once">Once (now)</option><option value="daily">Daily</option><option value="weekdays">Weekdays</option></select></div>
+    </div>
+    <div class="row">
+      <div><label>Time (HH:MM)</label><input type="time" id="camp-time" value="09:00"></div>
+      <div><label>Delay (s)</label><input type="number" id="camp-delay" value="3" min="0"></div>
+      <div><label>Agent Profile</label><select id="camp-agent-profile"><option value="">— None —</option></select></div>
+    </div>
+    <label style="margin-top:14px"><input type="checkbox" id="camp-custom-toggle" style="width:auto;margin-right:6px">Custom prompt</label>
+    <div id="camp-custom-wrap" class="hide"><textarea id="camp-custom" placeholder="Campaign system prompt…"></textarea></div>
+    <div class="row">
+      <div><label>Contacts CSV</label><input type="file" id="camp-file" accept=".csv"></div>
+    </div>
+    <button class="btn sec" id="camp-parse">📄 Parse CSV</button>
+    <div id="camp-preview"></div>
+    <button class="btn" id="camp-create">➕ Create Campaign</button>
+    <div class="err" id="camp-err"></div>
+  </div>
+  <div class="card">
+    <h3>All Campaigns</h3>
+    <table><thead><tr><th>Name</th><th>Status</th><th>Schedule</th><th>Contacts</th><th>Dispatched</th><th>Last Run</th><th>Actions</th></tr></thead>
+    <tbody id="camp-tbody"><tr><td colspan="7" class="muted">No campaigns yet.</td></tr></tbody></table>
+  </div>
+</section>
+
+<!-- ═══ AGENTS ═══ -->
+<section class="panel" id="panel-agents">
+  <h2>🤖 Agent Profiles</h2>
+  <div class="card">
+    <h3 id="agent-form-title">Create Profile</h3>
+    <input type="hidden" id="ag-id">
+    <div class="row">
+      <div><label>Profile Name</label><input id="ag-name" placeholder="Sales — Priya"></div>
+      <div><label>Voice</label><select id="ag-voice"></select></div>
+    </div>
+    <div class="row">
+      <div><label>Model</label><select id="ag-model">
+        <option value="gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview ⭐</option>
+        <option value="gemini-2.5-flash-native-audio-preview-12-2025">gemini-2.5-flash-native-audio-preview-12-2025</option>
+      </select></div>
+      <div><label>Enabled Tools (JSON array, empty=all)</label><input id="ag-tools" placeholder='["check_availability","book_appointment"]' value="[]"></div>
+    </div>
+    <label>System Prompt</label><textarea id="ag-prompt" placeholder="Override prompt for this profile…"></textarea>
+    <label style="margin-top:14px"><input type="checkbox" id="ag-default" style="width:auto;margin-right:6px">Set as default profile</label>
+    <div>
+      <button class="btn" id="ag-save">💾 Save Profile</button>
+      <button class="btn sec" id="ag-reset" type="button">↺ Reset Form</button>
+    </div>
+    <div class="err" id="ag-err"></div>
+  </div>
+  <div class="card">
+    <h3>Profiles</h3>
+    <table><thead><tr><th>Name</th><th>Voice</th><th>Model</th><th>Default</th><th>Actions</th></tr></thead>
+    <tbody id="ag-tbody"><tr><td colspan="5" class="muted">No profiles yet.</td></tr></tbody></table>
+  </div>
+</section>
+
+<!-- ═══ AI PROMPT ═══ -->
+<section class="panel" id="panel-prompt">
+  <h2>✏️ Global AI Prompt</h2>
+  <div class="card">
+    <small class="cnt" id="prompt-cnt">0 chars</small>
+    <h3>System Prompt <span id="prompt-custom-badge"></span></h3>
+    <textarea id="prompt-text" style="min-height:380px"></textarea>
+    <div>
+      <button class="btn" id="prompt-save">💾 Save</button>
+      <button class="btn sec" id="prompt-reset" type="button">↺ Reset to Default</button>
+    </div>
+    <div class="err" id="prompt-err"></div>
+  </div>
+</section>
+
+<!-- ═══ APPOINTMENTS ═══ -->
+<section class="panel" id="panel-appts">
+  <h2>📅 Appointments</h2>
+  <div class="card">
+    <div class="row">
+      <div><label>Filter by Date</label><input type="date" id="appt-date"></div>
+      <div style="display:flex;align-items:flex-end"><button class="btn sec small" id="appt-filter">Filter</button>
+      <button class="btn sec small" id="appt-clear" style="margin-left:8px">Clear</button></div>
+    </div>
+    <table style="margin-top:14px"><thead><tr><th>Name</th><th>Phone</th><th>Date</th><th>Time</th><th>Service</th><th>Status</th><th></th></tr></thead>
+    <tbody id="appt-tbody"><tr><td colspan="7" class="muted">No appointments.</td></tr></tbody></table>
+  </div>
+</section>
+
+<!-- ═══ CALL LOGS ═══ -->
+<section class="panel" id="panel-calls">
+  <h2>📝 Call Logs</h2>
+  <div class="card">
+    <table><thead><tr><th>Phone</th><th>Lead</th><th>Outcome</th><th>Reason</th><th>Duration</th><th>When</th><th>Recording</th><th>Notes</th></tr></thead>
+    <tbody id="calls-tbody"><tr><td colspan="8" class="muted">No calls yet.</td></tr></tbody></table>
+    <div class="pagination">
+      <button class="btn sec small" id="calls-prev">‹ Prev</button>
+      <span class="muted">Page <b id="calls-page">1</b></span>
+      <button class="btn sec small" id="calls-next">Next ›</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══ CRM ═══ -->
+<section class="panel" id="panel-crm">
+  <h2>👥 CRM</h2>
+  <div class="card">
+    <table><thead><tr><th>Phone</th><th>Lead</th><th>Total Calls</th><th>Booked</th><th>Last Outcome</th><th>Last Call</th></tr></thead>
+    <tbody id="crm-tbody"><tr><td colspan="6" class="muted">No contacts yet.</td></tr></tbody></table>
+    <div id="crm-detail"></div>
+  </div>
+</section>
+
+<!-- ═══ LOGS ═══ -->
+<section class="panel" id="panel-logs">
+  <h2>📋 System Logs</h2>
+  <div class="card">
+    <div class="row">
+      <div><label>Level</label><select id="log-level"><option value="">all</option><option value="info">info</option><option value="warning">warning</option><option value="error">error</option></select></div>
+      <div><label>Source</label><input id="log-source" placeholder="agent / server"></div>
+      <div style="display:flex;align-items:flex-end;gap:8px">
+        <button class="btn sec small" id="log-pause">⏸ Pause</button>
+        <button class="btn danger small" id="log-clear">🗑 Clear</button>
+      </div>
+    </div>
+    <table style="margin-top:14px"><thead><tr><th>Time</th><th>Level</th><th>Source</th><th>Message</th></tr></thead>
+    <tbody id="logs-tbody"><tr><td colspan="4" class="muted">No logs.</td></tr></tbody></table>
+  </div>
+</section>
+
+<!-- ═══ SETUP ═══ -->
+<section class="panel" id="panel-setup">
+  <h2>🔧 Setup & Quick Start</h2>
+  <div class="card">
+    <h3>One-Time Setup</h3>
+    <ol style="padding-left:20px;line-height:2">
+      <li>Run <code>supabase_schema.sql</code> in Supabase → SQL Editor</li>
+      <li>In <b>Coolify → your resource → Environment Variables</b>, set all keys (LiveKit, Gemini, Vobiz, Supabase) — never in the UI</li>
+      <li>Create the SIP trunk once: <code>POST /api/setup/trunk</code> (or set <code>OUTBOUND_TRUNK_ID</code> directly), then redeploy</li>
+      <li>✏️ AI Prompt → customise for your business → Save</li>
+      <li>🤖 Agents → create at least one profile</li>
+      <li>📞 Single Call → test with your own number</li>
+    </ol>
+    <p class="muted" style="margin-top:10px">🔒 API keys are configured only via server environment variables — the dashboard never displays or accepts them.</p>
+  </div>
+  <div class="card">
+    <h3>Cost Breakdown (per minute)</h3>
+    <table>
+      <tr><td>Vobiz SIP</td><td>₹1.00/min</td></tr>
+      <tr><td>LiveKit Cloud</td><td>₹0.17/min</td></tr>
+      <tr><td>Gemini Live</td><td>₹0.03/min</td></tr>
+      <tr><td><b>Total (realtime)</b></td><td><b>≈ ₹1.20/min</b></td></tr>
+    </table>
+    <p class="muted" style="margin-top:10px">A typical 2-minute call costs ≈ ₹2.40.</p>
+  </div>
+</section>
+
+</main>
+
+<script>
+// ── Core utilities ───────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const api = (path, opts) => fetch(path, opts).then(r => r.json());
+const apiPost = (path, body) => fetch(path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+const apiPut  = (path, body) => fetch(path, {method:'PUT', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+const apiPatch= (path, body) => fetch(path, {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+const apiDel  = path => fetch(path, {method:'DELETE'});
+const esc = s => (s==null?'':String(s)).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+function toast(msg, type='ok'){
+  const t=document.createElement('div');
+  t.className='toast'+(type==='err'?' err':'');
+  t.textContent=msg; document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 3500);
+}
+function showErr(id, msg){ const e=$(id); if(e) e.textContent=msg||''; }
+
+const VOICES = {
+  Female:['Aoede','Achernar','Autonoe','Callirrhoe','Despina','Erinome','Gacrux','Kore','Laomedeia','Leda','Pulcherrima','Sulafat','Vindemiatrix','Zephyr'],
+  Male:['Achird','Algenib','Algieba','Alnilam','Charon','Enceladus','Fenrir','Iapetus','Orus','Perseus','Puck','Rasalgethi','Sadachbia','Sadaltager','Schedar','Umbriel','Zubenelgenubi'],
+};
+const TOOL_NAMES = ['check_availability','book_appointment','end_call','transfer_to_human','send_sms_confirmation','lookup_contact','remember_details','book_calcom','cancel_calcom'];
+
+function fillVoiceSelect(sel){
+  if(!sel) return;
+  let html='';
+  for(const [grp, list] of Object.entries(VOICES)){
+    html+=`<optgroup label="${grp} voices">`;
+    list.forEach(v=>html+=`<option value="${v}">${v}${v==='Aoede'?' ⭐':''}</option>`);
+    html+='</optgroup>';
+  }
+  sel.innerHTML=html;
+}
+
+// ── Tab switching ────────────────────────────────────────────────
+const TAB_LOADERS = {
+  stats:()=>{loadStats();loadLiveConfig();},
+  single:loadAgentProfiles, batch:loadAgentProfiles,
+  campaigns:()=>{loadAgentProfiles();loadCampaigns();},
+  agents:loadAgentProfiles, prompt:loadPrompt,
+  appts:()=>loadAppointments(), calls:()=>loadCalls(1),
+  crm:loadCRM, logs:loadLogs,
+};
+function switchTab(name){
+  document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active', p.id==='panel-'+name));
+  (TAB_LOADERS[name]||(()=>{}))();
+}
+$('nav').addEventListener('click', e=>{ if(e.target.dataset.tab) switchTab(e.target.dataset.tab); });
+
+// ── Stats + Charts ───────────────────────────────────────────────
+const _charts = {};
+function _mkChart(id, type, data, options){
+  const ctx=$(id); if(!ctx) return;
+  if(_charts[id]) _charts[id].destroy();
+  _charts[id]=new Chart(ctx, {type, data, options:Object.assign({responsive:true,maintainAspectRatio:false,plugins:{legend:{labels:{color:'#94A3B8',font:{family:'Inter'}}}}}, options||{})});
+}
+async function loadStats(){
+  try{
+    const d=await api('/api/stats');
+    $('k-total').textContent=d.total_calls;
+    $('k-booked').textContent=d.booked;
+    $('k-ni').textContent=d.not_interested;
+    $('k-rate').textContent=(d.booking_rate_percent||0)+'%';
+    $('k-dur').textContent=(d.avg_duration_seconds||0)+'s';
+    _renderCharts(d);
+  }catch(e){ /* ignore */ }
+}
+function _renderCharts(d){
+  const PAL=['#7C3AED','#EC4899','#F97316','#FB7185','#A78BFA','#8B83A8'];
+  const GRID={color:'rgba(124,58,237,.10)'};
+  const TICK={color:'#CBD5E1',font:{family:'Inter'}};
+  const oc=d.outcomes||{};
+  _mkChart('chart-outcomes','doughnut',
+    {labels:Object.keys(oc),datasets:[{data:Object.values(oc),backgroundColor:PAL,borderColor:'rgba(8,5,26,.85)',borderWidth:2}]},
+    {cutout:'62%'});
+  const dbo=d.duration_by_outcome||{};
+  _mkChart('chart-duration','bar',
+    {labels:Object.keys(dbo),datasets:[{label:'Avg seconds',data:Object.values(dbo).map(v=>Math.round(v)),backgroundColor:'rgba(236,72,153,.6)',borderColor:'#F0ABFC',borderWidth:1,borderRadius:6}]},
+    {scales:{x:{ticks:TICK,grid:GRID},y:{ticks:TICK,grid:GRID}}});
+  const tl=d.timeline||[];
+  _mkChart('chart-timeline','line',
+    {labels:tl.map(t=>t.date.slice(5)),datasets:[{label:'Calls',data:tl.map(t=>t.count),borderColor:'#A78BFA',backgroundColor:'rgba(124,58,237,.16)',fill:true,tension:.35,pointBackgroundColor:'#F0ABFC',pointRadius:3}]},
+    {scales:{x:{ticks:TICK,grid:GRID},y:{ticks:TICK,grid:GRID}}});
+}
+async function loadLiveConfig(){
+  try{
+    const s=await api('/api/settings');
+    const get=k=>(s[k]&&(s[k].value||s[k].configured))?(s[k].value||'••• set'):'—';
+    const p=await api('/api/prompt');
+    $('live-config').innerHTML=
+      `<span class="chip">Model: <b>${esc(get('GEMINI_MODEL'))}</b></span>`+
+      `<span class="chip">Voice: <b>${esc(get('GEMINI_TTS_VOICE'))}</b></span>`+
+      `<span class="chip">Realtime: <b>${esc(get('USE_GEMINI_REALTIME'))}</b></span>`+
+      `<span class="chip">LiveKit: <b>${s.LIVEKIT_URL&&s.LIVEKIT_URL.configured?'✓':'✗'}</b></span>`+
+      `<span class="chip">Trunk: <b>${get('OUTBOUND_TRUNK_ID')!=='—'?'✓':'✗'}</b></span>`+
+      `<span class="chip">Prompt: <b>${p.is_custom?'custom':'default'}</b></span>`;
+  }catch(e){ $('live-config').innerHTML='<span class="muted">unavailable</span>'; }
+}
+
+// ── Single Call ──────────────────────────────────────────────────
+$('f-custom-toggle').addEventListener('change',e=>$('f-custom-wrap').classList.toggle('hide',!e.target.checked));
+$('call-form').addEventListener('submit', async e=>{
+  e.preventDefault(); showErr('call-err','');
+  const body={
+    phone:$('f-phone').value.trim(), lead_name:$('f-lead').value.trim()||'there',
+    business_name:$('f-biz').value.trim()||'our company', service_type:$('f-service').value.trim()||'our service',
+    agent_profile_id:$('f-agent-profile').value||null,
+  };
+  if($('f-custom-toggle').checked && $('f-custom').value.trim()) body.system_prompt=$('f-custom').value.trim();
+  try{
+    const r=await apiPost('/api/call', body); const d=await r.json();
+    if(!r.ok) throw new Error(d.detail||'dispatch failed');
+    toast('📞 Call dispatched to '+d.phone);
+  }catch(err){ showErr('call-err', err.message); toast(err.message,'err'); }
+});
+
+// ── CSV parsing helper ───────────────────────────────────────────
+function parseCSV(text){
+  const lines=text.trim().split(/\r?\n/).filter(Boolean);
+  if(!lines.length) return [];
+  const headers=lines[0].split(',').map(h=>h.trim().toLowerCase());
+  return lines.slice(1).map(line=>{
+    const cells=line.split(',').map(c=>c.trim());
+    const obj={}; headers.forEach((h,i)=>obj[h]=cells[i]||'');
+    return obj;
+  }).filter(o=>o.phone);
+}
+function previewTable(contacts, targetId){
+  let html=`<p class="muted" style="margin-top:12px">${contacts.length} valid contacts</p><table style="margin-top:8px"><thead><tr><th>Phone</th><th>Lead</th><th>Business</th><th>Service</th></tr></thead><tbody>`;
+  contacts.slice(0,8).forEach(c=>html+=`<tr><td>${esc(c.phone)}</td><td>${esc(c.lead_name||'')}</td><td>${esc(c.business_name||'')}</td><td>${esc(c.service_type||'')}</td></tr>`);
+  html+='</tbody></table>'; $(targetId).innerHTML=html;
+}
+
+// ── Batch Call ───────────────────────────────────────────────────
+let _batchContacts=[];
+$('bc-parse').addEventListener('click', ()=>{
+  const f=$('bc-file').files[0]; if(!f){toast('Select a CSV first','err');return;}
+  const rd=new FileReader();
+  rd.onload=()=>{ _batchContacts=parseCSV(rd.result); previewTable(_batchContacts,'bc-preview'); $('bc-start').disabled=!_batchContacts.length; };
+  rd.readAsText(f);
+});
+$('bc-start').addEventListener('click', async ()=>{
+  if(!_batchContacts.length) return;
+  const delay=parseInt($('bc-delay').value||'3')*1000;
+  const profile=$('bc-agent-profile').value||null;
+  $('bc-start').disabled=true; let done=0, ok=0;
+  for(const c of _batchContacts){
+    const body={phone:c.phone, lead_name:c.lead_name||'there', business_name:c.business_name||'our company', service_type:c.service_type||'our service', agent_profile_id:profile};
+    try{ const r=await apiPost('/api/call', body); if(r.ok) ok++; }catch(e){}
+    done++; $('bc-bar').style.width=(done/_batchContacts.length*100)+'%';
+    $('bc-status').textContent=`${done}/${_batchContacts.length} dispatched (${ok} ok)`;
+    if(done<_batchContacts.length) await new Promise(r=>setTimeout(r,delay));
+  }
+  toast(`Batch done — ${ok}/${_batchContacts.length} dispatched`);
+  $('bc-start').disabled=false;
+});
+
+// ── Campaigns ────────────────────────────────────────────────────
+let _campContacts=[];
+$('camp-custom-toggle').addEventListener('change',e=>$('camp-custom-wrap').classList.toggle('hide',!e.target.checked));
+$('camp-parse').addEventListener('click', ()=>{
+  const f=$('camp-file').files[0]; if(!f){toast('Select a CSV first','err');return;}
+  const rd=new FileReader();
+  rd.onload=()=>{ _campContacts=parseCSV(rd.result); previewTable(_campContacts,'camp-preview'); };
+  rd.readAsText(f);
+});
+$('camp-create').addEventListener('click', async ()=>{
+  showErr('camp-err','');
+  if(!$('camp-name').value.trim()){showErr('camp-err','Name required');return;}
+  if(!_campContacts.length){showErr('camp-err','Parse a CSV first');return;}
+  const body={
+    name:$('camp-name').value.trim(), contacts:_campContacts,
+    schedule_type:$('camp-sched').value, schedule_time:$('camp-time').value,
+    call_delay_seconds:parseInt($('camp-delay').value||'3'),
+    agent_profile_id:$('camp-agent-profile').value||null,
+  };
+  if($('camp-custom-toggle').checked && $('camp-custom').value.trim()) body.system_prompt=$('camp-custom').value.trim();
+  try{
+    const r=await apiPost('/api/campaigns', body); const d=await r.json();
+    if(!r.ok) throw new Error(d.detail||'failed');
+    toast('🚀 Campaign created'); _campContacts=[]; $('camp-preview').innerHTML=''; $('camp-name').value='';
+    loadCampaigns();
+  }catch(err){ showErr('camp-err', err.message); }
+});
+async function loadCampaigns(){
+  try{
+    const list=await api('/api/campaigns');
+    const tb=$('camp-tbody');
+    if(!Array.isArray(list)||!list.length){tb.innerHTML='<tr><td colspan="7" class="muted">No campaigns yet.</td></tr>';return;}
+    tb.innerHTML=list.map(c=>{
+      const n=JSON.parse(c.contacts_json||'[]').length;
+      return `<tr><td>${esc(c.name)}</td><td><span class="badge b-${esc(c.status)}">${esc(c.status)}</span></td>
+        <td>${esc(c.schedule_type)} ${esc(c.schedule_time||'')}</td><td>${n}</td>
+        <td>${c.total_dispatched||0}/${c.total_failed||0}f</td><td class="muted">${esc((c.last_run_at||'—').slice(0,16))}</td>
+        <td>
+          <button class="btn small sec" onclick="runCampaign('${c.id}','${esc(c.name)}')">▶ Run</button>
+          <button class="btn small sec" onclick="toggleCampaignStatus('${c.id}','${c.status==='paused'?'active':'paused'}')">${c.status==='paused'?'▶ Resume':'⏸ Pause'}</button>
+          <button class="btn small danger" onclick="deleteCampaign('${c.id}','${esc(c.name)}')">🗑</button>
+        </td></tr>`;
+    }).join('');
+  }catch(e){}
+}
+window.runCampaign=async(id,name)=>{ const r=await apiPost(`/api/campaigns/${id}/run`,{}); if(r.ok){toast('▶ Running '+name);} else toast('Run failed','err'); };
+window.toggleCampaignStatus=async(id,status)=>{ const r=await apiPatch(`/api/campaigns/${id}/status`,{status}); if(r.ok){toast('Status: '+status);loadCampaigns();} };
+window.deleteCampaign=async(id,name)=>{ if(!confirm('Delete campaign '+name+'?'))return; const r=await apiDel(`/api/campaigns/${id}`); if(r.ok){toast('Deleted');loadCampaigns();} };
+
+// ── Agent Profiles ───────────────────────────────────────────────
+async function loadAgentProfiles(){
+  let profiles=[];
+  try{ const raw=await api('/api/agent-profiles'); profiles=Array.isArray(raw)?raw:[]; }catch(e){ profiles=[]; }
+  // table
+  const tb=$('ag-tbody');
+  if(profiles.length){
+    tb.innerHTML=profiles.map(p=>`<tr>
+      <td>${esc(p.name)}</td><td>${esc(p.voice)}</td><td class="muted">${esc(p.model)}</td>
+      <td>${p.is_default?'★':''}</td>
+      <td>
+        <button class="btn small sec" onclick="editAgentProfile('${p.id}')">✎</button>
+        <button class="btn small sec" onclick="setDefaultAgentProfile('${p.id}','${esc(p.name)}')">★</button>
+        <button class="btn small danger" onclick="deleteAgentProfile('${p.id}','${esc(p.name)}')">🗑</button>
+      </td></tr>`).join('');
+  } else { tb.innerHTML='<tr><td colspan="5" class="muted">No profiles yet.</td></tr>'; }
+  // dropdowns
+  const opts='<option value="">— None —</option>'+profiles.map(p=>`<option value="${p.id}">${esc(p.name)}${p.is_default?' ★':''}</option>`).join('');
+  ['f-agent-profile','bc-agent-profile','camp-agent-profile'].forEach(id=>{ if($(id)){const v=$(id).value;$(id).innerHTML=opts;$(id).value=v;} });
+}
+window.saveAgentProfile=async()=>{
+  showErr('ag-err','');
+  const id=$('ag-id').value;
+  const body={name:$('ag-name').value.trim(), voice:$('ag-voice').value, model:$('ag-model').value,
+    system_prompt:$('ag-prompt').value.trim()||null, enabled_tools:$('ag-tools').value.trim()||'[]', is_default:$('ag-default').checked};
+  if(!body.name){showErr('ag-err','Name required');return;}
+  try{
+    const r=id?await apiPut(`/api/agent-profiles/${id}`,body):await apiPost('/api/agent-profiles',body);
+    const d=await r.json(); if(!r.ok) throw new Error(d.detail||'failed');
+    toast('💾 Profile saved'); resetAgentForm(); loadAgentProfiles();
+  }catch(err){ showErr('ag-err',err.message); }
+};
+window.editAgentProfile=async(id)=>{
+  const p=await api(`/api/agent-profiles/${id}`);
+  $('ag-id').value=p.id; $('ag-name').value=p.name||''; $('ag-voice').value=p.voice||'Aoede';
+  $('ag-model').value=p.model||'gemini-3.1-flash-live-preview'; $('ag-tools').value=p.enabled_tools||'[]';
+  $('ag-prompt').value=p.system_prompt||''; $('ag-default').checked=!!p.is_default;
+  $('agent-form-title').textContent='Edit Profile'; switchTab('agents'); window.scrollTo(0,0);
+};
+window.deleteAgentProfile=async(id,name)=>{ if(!confirm('Delete profile '+name+'?'))return; const r=await apiDel(`/api/agent-profiles/${id}`); if(r.ok){toast('Deleted');loadAgentProfiles();} };
+window.setDefaultAgentProfile=async(id,name)=>{ const r=await apiPost(`/api/agent-profiles/${id}/set-default`,{}); if(r.ok){toast('★ Default: '+name);loadAgentProfiles();} };
+window.resetAgentForm=()=>{ $('ag-id').value='';['ag-name','ag-prompt'].forEach(i=>$(i).value=''); $('ag-tools').value='[]'; $('ag-voice').value='Aoede'; $('ag-default').checked=false; $('agent-form-title').textContent='Create Profile'; };
+$('ag-save').addEventListener('click', e=>{e.preventDefault();saveAgentProfile();});
+$('ag-reset').addEventListener('click', resetAgentForm);
+
+// ── Prompt ───────────────────────────────────────────────────────
+$('prompt-text').addEventListener('input', ()=>$('prompt-cnt').textContent=$('prompt-text').value.length+' chars');
+async function loadPrompt(){
+  const d=await api('/api/prompt');
+  $('prompt-text').value=d.prompt||''; $('prompt-cnt').textContent=(d.prompt||'').length+' chars';
+  $('prompt-custom-badge').innerHTML=d.is_custom?'<span class="badge b-booked">custom</span>':'<span class="badge b-unknown">default</span>';
+}
+window.savePrompt=async()=>{ const r=await apiPost('/api/prompt',{prompt:$('prompt-text').value}); if(r.ok){toast('💾 Prompt saved');loadPrompt();} else toast('Save failed','err'); };
+window.resetPrompt=async()=>{ if(!confirm('Reset prompt to default?'))return; const r=await apiDel('/api/prompt'); const d=await r.json(); $('prompt-text').value=d.prompt||''; toast('↺ Reset to default'); loadPrompt(); };
+$('prompt-save').addEventListener('click', e=>{e.preventDefault();savePrompt();});
+$('prompt-reset').addEventListener('click', resetPrompt);
+
+// ── Appointments ─────────────────────────────────────────────────
+async function loadAppointments(date){
+  const q=date?('?date='+encodeURIComponent(date)):'';
+  const list=await api('/api/appointments'+q);
+  const tb=$('appt-tbody');
+  if(!Array.isArray(list)||!list.length){tb.innerHTML='<tr><td colspan="7" class="muted">No appointments.</td></tr>';return;}
+  tb.innerHTML=list.map(a=>`<tr>
+    <td>${esc(a.name)}</td><td>${esc(a.phone)}</td><td>${esc(a.date)}</td><td>${esc(a.time)}</td>
+    <td>${esc(a.service)}</td><td><span class="badge b-${a.status==='booked'?'booked':'unknown'}">${esc(a.status)}</span></td>
+    <td>${a.status==='booked'?`<button class="btn small danger" onclick="cancelAppointment('${a.id}')">Cancel</button>`:''}</td></tr>`).join('');
+}
+window.cancelAppointment=async(id)=>{ if(!confirm('Cancel this appointment?'))return; const r=await apiDel('/api/appointments/'+id); if(r.ok){toast('Cancelled');loadAppointments($('appt-date').value||null);} };
+$('appt-filter').addEventListener('click', ()=>loadAppointments($('appt-date').value||null));
+$('appt-clear').addEventListener('click', ()=>{$('appt-date').value='';loadAppointments();});
+
+// ── Call Logs ────────────────────────────────────────────────────
+let _callsPage=1;
+async function loadCalls(page=1){
+  _callsPage=page; $('calls-page').textContent=page;
+  const list=await api(`/api/calls?page=${page}&limit=20`);
+  const tb=$('calls-tbody');
+  if(!Array.isArray(list)||!list.length){tb.innerHTML='<tr><td colspan="8" class="muted">No calls.</td></tr>';return;}
+  tb.innerHTML=list.map(c=>{
+    const out=c.outcome||'unknown';
+    const rec=c.recording_url?`<a href="${esc(c.recording_url)}" target="_blank">▶</a>`:'—';
+    return `<tr>
+      <td>${esc(c.phone_number)}</td><td>${esc(c.lead_name||'—')}</td>
+      <td><span class="badge b-${esc(out)}">${esc(out)}</span></td><td class="muted">${esc(c.reason||'')}</td>
+      <td>${c.duration_seconds||0}s</td><td class="muted">${esc((c.timestamp||'').slice(0,16))}</td><td>${rec}</td>
+      <td><input value="${esc(c.notes||'')}" id="note-${c.id}" style="font-size:12px;padding:4px" onblur="saveNotes('${c.id}')"></td>
+    </tr>`;
+  }).join('');
+}
+window.saveNotes=async(callId)=>{ const v=$('note-'+callId).value; const r=await apiPatch(`/api/calls/${callId}/notes`,{notes:v}); if(r.ok) toast('Notes saved'); };
+$('calls-prev').addEventListener('click', ()=>{ if(_callsPage>1) loadCalls(_callsPage-1); });
+$('calls-next').addEventListener('click', ()=>loadCalls(_callsPage+1));
+
+// ── CRM ──────────────────────────────────────────────────────────
+async function loadCRM(){
+  const res=await api('/api/crm'); const list=res.data||[];
+  const tb=$('crm-tbody'); $('crm-detail').innerHTML='';
+  if(!list.length){tb.innerHTML='<tr><td colspan="6" class="muted">No contacts yet.</td></tr>';return;}
+  tb.innerHTML=list.map(c=>`<tr style="cursor:pointer" onclick="loadContactDetail('${esc(c.phone_number)}')">
+    <td>${esc(c.phone_number)}</td><td>${esc(c.lead_name||'—')}</td><td>${c.total_calls}</td><td>${c.booked}</td>
+    <td><span class="badge b-${esc(c.last_outcome||'unknown')}">${esc(c.last_outcome||'—')}</span></td>
+    <td class="muted">${esc((c.last_call||'').slice(0,16))}</td></tr>`).join('');
+}
+window.loadContactDetail=async(phone)=>{
+  const res=await api('/api/crm/calls?phone='+encodeURIComponent(phone)); const calls=res.data||[];
+  let html=`<div class="drill"><h3>History — ${esc(phone)} (${calls.length} calls)</h3><table><thead><tr><th>When</th><th>Outcome</th><th>Reason</th><th>Duration</th><th>Notes</th></tr></thead><tbody>`;
+  html+=calls.map(c=>`<tr><td class="muted">${esc((c.timestamp||'').slice(0,16))}</td><td><span class="badge b-${esc(c.outcome||'unknown')}">${esc(c.outcome||'—')}</span></td><td class="muted">${esc(c.reason||'')}</td><td>${c.duration_seconds||0}s</td><td class="muted">${esc(c.notes||'')}</td></tr>`).join('');
+  html+='</tbody></table></div>'; $('crm-detail').innerHTML=html;
+};
+
+
+// ── Logs ─────────────────────────────────────────────────────────
+let _logsTimer=null, _logsPaused=false;
+async function loadLogs(){
+  const lvl=$('log-level').value, src=$('log-source').value.trim();
+  let q='/api/logs?limit=200'; if(lvl)q+='&level='+lvl; if(src)q+='&source='+encodeURIComponent(src);
+  const list=await api(q); const tb=$('logs-tbody');
+  if(!Array.isArray(list)||!list.length){tb.innerHTML='<tr><td colspan="4" class="muted">No logs.</td></tr>';return;}
+  tb.innerHTML=list.map(l=>`<tr>
+    <td class="muted">${esc((l.timestamp||'').slice(0,19).replace('T',' '))}</td>
+    <td><span class="badge b-${esc(l.level)}">${esc(l.level)}</span></td>
+    <td>${esc(l.source)}</td><td>${esc(l.message)}${l.detail?` <span class="muted">— ${esc(l.detail)}</span>`:''}</td></tr>`).join('');
+}
+function scheduleLogsRefresh(){ if(_logsTimer) clearInterval(_logsTimer); _logsTimer=setInterval(()=>{ if(!_logsPaused && $('panel-logs').classList.contains('active')) loadLogs(); },5000); }
+$('log-level').addEventListener('change', loadLogs);
+$('log-source').addEventListener('input', ()=>{clearTimeout(window._ls);window._ls=setTimeout(loadLogs,400);});
+$('log-pause').addEventListener('click', ()=>{ _logsPaused=!_logsPaused; $('log-pause').textContent=_logsPaused?'▶ Resume':'⏸ Pause'; });
+$('log-clear').addEventListener('click', async ()=>{ if(!confirm('Clear all logs?'))return; await apiDel('/api/logs'); toast('Logs cleared'); loadLogs(); });
+
+// ── Init ─────────────────────────────────────────────────────────
+function init(){
+  fillVoiceSelect($('ag-voice'));
+  loadStats(); loadLiveConfig();
+  loadCalls(1); loadAppointments(); loadLogs();
+  loadAgentProfiles();
+  setInterval(()=>{ if($('panel-stats').classList.contains('active')){loadStats();loadLiveConfig();} }, 10000);
+  scheduleLogsRefresh();
+}
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
