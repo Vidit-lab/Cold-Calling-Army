@@ -77,6 +77,22 @@ def init_db() -> None:
         print("   Run supabase_schema.sql in your Supabase Dashboard → SQL Editor")
 
 
+def log_worker_boot(version: str) -> None:
+    """Write a visible boot marker to error_logs (sync) so the dashboard Logs tab
+    proves whether the running worker is THIS code — no docker access needed."""
+    try:
+        db = _sdb()
+        db.table("error_logs").insert({
+            "id": str(uuid.uuid4()), "source": "worker", "level": "info",
+            "message": f"🚀 WORKER BOOTED — {version}",
+            "detail": f"Supabase target: {_default('SUPABASE_URL')}",
+            "timestamp": datetime.now().isoformat(),
+        }).execute()
+        print(f"✅ Worker boot marker written to error_logs ({version})")
+    except Exception as exc:
+        print(f"⚠️  Worker boot marker failed: {exc}")
+
+
 # ── Settings ─────────────────────────────────────────────────────────────────
 
 async def get_all_settings() -> dict:

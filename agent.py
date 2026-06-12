@@ -25,7 +25,10 @@ except ImportError:
     _HAS_ROOM_OPTIONS = False
 from livekit.plugins import noise_cancellation, silero
 
-from db import init_db, log_error, get_enabled_tools
+from db import init_db, log_error, get_enabled_tools, log_worker_boot
+
+# Bump this whenever you deploy so the Logs tab shows which build is actually live.
+WORKER_VERSION = "booking-fix-v2"
 from prompts import build_prompt
 from tools import AppointmentTools
 
@@ -368,6 +371,7 @@ async def entrypoint(ctx: agents.JobContext) -> None:
 if __name__ == "__main__":
     init_db()
     load_db_settings_to_env()
+    log_worker_boot(WORKER_VERSION)  # visible in dashboard Logs tab → proves new code is live
     agents.cli.run_app(
         agents.WorkerOptions(entrypoint_fnc=entrypoint, agent_name="outbound-caller")
     )

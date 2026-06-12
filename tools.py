@@ -36,6 +36,7 @@ class AppointmentTools(llm.ToolContext):
         self.lead_name = lead_name
         self._call_start_time = time.time()
         self._sip_domain = os.getenv("VOBIZ_SIP_DOMAIN", "")
+        self.call_logged = False  # set True once a call_log row is written (by end_call or the fallback)
         self.recording_url: Optional[str] = None
         super().__init__(tools=[])
 
@@ -112,6 +113,7 @@ class AppointmentTools(llm.ToolContext):
                 lead_name=self.lead_name, outcome=outcome, reason=reason,
                 duration_seconds=duration, recording_url=self.recording_url,
             )
+            self.call_logged = True
             await _log("✅ end_call SAVED call_log to DB", f"{self.phone_number} outcome={outcome}")
         except Exception as exc:
             import traceback
