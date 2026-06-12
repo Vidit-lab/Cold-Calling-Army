@@ -49,8 +49,17 @@ def _sdb():
 
 
 async def _adb():
-    from supabase._async.client import create_client
-    return await create_client(_default("SUPABASE_URL"), _default("SUPABASE_SERVICE_KEY"))
+    url, key = _default("SUPABASE_URL"), _default("SUPABASE_SERVICE_KEY")
+    # Prefer the stable PUBLIC async factory; fall back to the internal path for
+    # older supabase-py. The internal `supabase._async.client.create_client` path
+    # can disappear across versions and silently break every async read/write
+    # (while the sync client in init_db keeps reporting "connected").
+    try:
+        from supabase import acreate_client
+        return await acreate_client(url, key)
+    except ImportError:
+        from supabase._async.client import create_client
+        return await create_client(url, key)
 
 
 def init_db() -> None:

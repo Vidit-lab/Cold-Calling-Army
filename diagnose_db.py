@@ -119,11 +119,56 @@ def main() -> None:
         "status": "booked", "created_at": datetime.now().isoformat(),
     })
 
+    # ── 5. ASYNC client test — this is the path the REAL app uses (_adb) ──
+    # init_db() and the test above use the SYNC client. Every actual read/write
+    # in the running app goes through the ASYNC client. If sync works but async
+    # fails, that alone explains empty logs + no call_logs while init_db says OK.
+    print("\n--- ASYNC CLIENT TEST (the path the live app actually uses) ---")
+    import asyncio
+    asyncio.run(_async_test())
+
     print("\n" + "=" * 60)
-    print(" If both WRITE round-trips show ✅ , the database is fine and")
-    print(" the problem is the worker not calling the tools (redeploy it).")
-    print(" If they show ❌ , the printed error above is the exact cause.")
+    print(" If SYNC writes ✅ but ASYNC ❌  → the async client path is the bug")
+    print("   (db.py _adb()). That's why logs + call_logs are empty.")
+    print(" If both ✅  → DB is fine; the worker isn't calling tools (redeploy).")
+    print(" If both ❌  → the printed error above is the exact cause.")
     print("=" * 60 + "\n")
+
+
+async def _async_test() -> None:
+    """Replicate db.py's _adb() exactly, then do an async insert→read→delete."""
+    # Try the same import the app uses, then the stable public factory.
+    client = None
+    try:
+        from supabase._async.client import create_client as acreate
+        client = await acreate(URL, KEY)
+        ok("async client via supabase._async.client.create_client (what db.py uses)")
+    except Exception as exc:
+        bad(f"supabase._async.client.create_client FAILED → {exc}")
+        try:
+            from supabase import acreate_client
+            client = await acreate_client(URL, KEY)
+            warn("Fell back to public acreate_client() — db.py should switch to this.")
+        except Exception as exc2:
+            bad(f"public acreate_client also FAILED → {exc2}")
+            return
+    rid = str(uuid.uuid4())
+    try:
+        await client.table("call_logs").insert({
+            "id": rid, "phone_number": "+10000000000", "lead_name": "DIAGNOSTIC-ASYNC",
+            "outcome": "diagnostic", "reason": "async-self-test",
+            "duration_seconds": 0, "timestamp": datetime.now().isoformat(),
+        }).execute()
+        back = await client.table("call_logs").select("id").eq("id", rid).execute()
+        if back.data:
+            ok("ASYNC call_logs insert + read-back SUCCEEDED — the live app's path works.")
+        else:
+            bad("ASYNC insert returned no error but row NOT visible.")
+        await client.table("call_logs").delete().eq("id", rid).execute()
+    except Exception as exc:
+        import traceback
+        bad(f"ASYNC call_logs write FAILED → {exc}")
+        print(traceback.format_exc())
 
 
 def _write_test(db, table: str, row: dict) -> None:
