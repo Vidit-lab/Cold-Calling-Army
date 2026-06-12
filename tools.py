@@ -64,14 +64,18 @@ class AppointmentTools(llm.ToolContext):
             return "Unable to check availability right now — please suggest a date and I will confirm."
 
     @llm.function_tool
-    async def book_appointment(self, name: str, phone: str, date: str, time: str, service: str) -> str:
+    async def book_appointment(self, name: str, date: str, time: str, service: str, phone: str = "") -> str:
         """
         Book an appointment after the lead has verbally confirmed date, time, and service.
         Call ONLY after the lead confirms all details.
-        name: lead's full name | phone: with country code | date: YYYY-MM-DD | time: HH:MM | service: type
+        name: lead's full name | date: YYYY-MM-DD | time: HH:MM | service: type
+        Do NOT ask the lead for their phone number — the system already knows the number being called.
         """
+        # Always book against the number we actually dialed; only fall back to an
+        # LLM-supplied value if this call has no known phone (e.g. inbound/web test).
+        actual_phone = self.phone_number or phone or "unknown"
         try:
-            booking_id = await insert_appointment(name, phone, date, time, service)
+            booking_id = await insert_appointment(name, actual_phone, date, time, service)
             return f"Confirmed! Booking ID: {booking_id}. See you on {date} at {time} for {service}."
         except Exception as exc:
             return "Technical issue saving the booking. Our team will confirm shortly."
@@ -133,22 +137,25 @@ class AppointmentTools(llm.ToolContext):
             return "Transfer failed. Please call us back directly."
 
     @llm.function_tool
-    async def send_sms_confirmation(self, phone: str, message: str) -> str:
+    async def send_sms_confirmation(self, message: str, phone: str = "") -> str:
         """
         Send SMS confirmation after a successful booking. Skips silently if Twilio not configured.
-        phone: lead's phone | message: text to send
+        message: text to send. The number being called is used automatically — no need to ask for it.
         """
         sid = os.getenv("TWILIO_ACCOUNT_SID", "")
         token = os.getenv("TWILIO_AUTH_TOKEN", "")
         from_num = os.getenv("TWILIO_FROM_NUMBER", "")
         if not (sid and token and from_num):
             return "SMS skipped: Twilio not configured."
+        to_num = self.phone_number or phone
+        if not to_num:
+            return "SMS skipped: no phone number for this call."
         try:
             from twilio.rest import Client
             loop = asyncio.get_event_loop()
             client = Client(sid, token)
-            await loop.run_in_executor(None, lambda: client.messages.create(body=message, from_=from_num, to=phone))
-            return f"SMS sent to {phone}."
+            await loop.run_in_executor(None, lambda: client.messages.create(body=message, from_=from_num, to=to_num))
+            return f"SMS sent to {to_num}."
         except Exception as exc:
             return "SMS delivery failed, but booking is confirmed."
 

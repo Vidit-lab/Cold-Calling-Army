@@ -144,6 +144,19 @@ ol code,p code{background:rgba(124,58,237,.16);border:1px solid rgba(124,58,237,
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:rgba(124,58,237,.35);border-radius:8px;border:3px solid transparent;background-clip:content-box}
 ::-webkit-scrollbar-thumb:hover{background:rgba(124,58,237,.55);background-clip:content-box}
+.tools-dd{position:relative}
+.tools-dd>summary{list-style:none;cursor:pointer;padding:10px 12px;border-radius:10px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.12);user-select:none}
+.tools-dd>summary::-webkit-details-marker{display:none}
+.tools-dd>summary::after{content:'▾';float:right;opacity:.6}
+.tools-dd[open]>summary::after{content:'▴'}
+.tools-dd-body{position:absolute;z-index:30;left:0;right:0;margin-top:6px;max-height:260px;overflow:auto;padding:8px;border-radius:10px;background:#1a1530;border:1px solid rgba(255,255,255,.14);box-shadow:0 12px 30px rgba(0,0,0,.45)}
+.tools-dd-body .tool-row{display:flex;gap:8px;align-items:flex-start;padding:6px 6px;border-radius:8px}
+.tools-dd-body .tool-row:hover{background:rgba(124,58,237,.14)}
+.tools-dd-body .tool-row input{width:auto;margin-top:3px}
+.tools-dd-body .tool-row b{font-weight:600}
+.tools-dd-body .tool-row small{display:block;opacity:.6;font-size:11px}
+.tools-dd-body .tool-tools-actions{display:flex;gap:10px;padding:4px 6px 8px;border-bottom:1px solid rgba(255,255,255,.1);margin-bottom:4px}
+.tools-dd-body .tool-tools-actions a{cursor:pointer;color:#a78bfa;font-size:12px}
 </style>
 </head>
 <body>
@@ -278,7 +291,13 @@ ol code,p code{background:rgba(124,58,237,.16);border:1px solid rgba(124,58,237,
         <option value="gemini-3.1-flash-live-preview">gemini-3.1-flash-live-preview ⭐</option>
         <option value="gemini-2.5-flash-native-audio-preview-12-2025">gemini-2.5-flash-native-audio-preview-12-2025</option>
       </select></div>
-      <div><label>Enabled Tools (JSON array, empty=all)</label><input id="ag-tools" placeholder='["check_availability","book_appointment"]' value="[]"></div>
+      <div><label>Enabled Tools</label>
+        <details class="tools-dd">
+          <summary id="ag-tools-summary">All tools enabled</summary>
+          <div class="tools-dd-body" id="ag-tools-box"></div>
+        </details>
+        <input type="hidden" id="ag-tools" value="[]">
+      </div>
     </div>
     <label>System Prompt</label><textarea id="ag-prompt" placeholder="Override prompt for this profile…"></textarea>
     <label style="margin-top:14px"><input type="checkbox" id="ag-default" style="width:auto;margin-right:6px">Set as default profile</label>
@@ -417,6 +436,48 @@ const VOICES = {
   Male:['Achird','Algenib','Algieba','Alnilam','Charon','Enceladus','Fenrir','Iapetus','Orus','Perseus','Puck','Rasalgethi','Sadachbia','Sadaltager','Schedar','Umbriel','Zubenelgenubi'],
 };
 const TOOL_NAMES = ['check_availability','book_appointment','end_call','transfer_to_human','send_sms_confirmation','lookup_contact','remember_details','book_calcom','cancel_calcom'];
+const TOOL_META = {
+  check_availability:   'Check if a date/time slot is free before booking',
+  book_appointment:     'Save the confirmed appointment to the database',
+  end_call:             'Hang up and log the call outcome',
+  transfer_to_human:    'Warm-transfer the call to a human agent (SIP REFER)',
+  send_sms_confirmation:'Text a booking confirmation via Twilio',
+  lookup_contact:       'Pull prior call history + notes at call start',
+  remember_details:     'Save a useful insight about the lead for next time',
+  book_calcom:          'Mirror the booking into a Cal.com calendar',
+  cancel_calcom:        'Cancel a Cal.com booking by UID',
+};
+
+// Build the tool checkbox dropdown. selected: array of tool names, or [] / null = all.
+function renderToolChecks(selected){
+  const box=$('ag-tools-box'); if(!box) return;
+  const all = !selected || selected.length===0;
+  const set = new Set(selected||[]);
+  let html='<div class="tool-tools-actions"><a id="tool-all">Select all</a><a id="tool-none">Clear</a></div>';
+  TOOL_NAMES.forEach(n=>{
+    const on = all || set.has(n);
+    html+=`<label class="tool-row"><input type="checkbox" class="ag-tool-cb" value="${n}" ${on?'checked':''}>`+
+          `<span><b>${n}</b><small>${TOOL_META[n]||''}</small></span></label>`;
+  });
+  box.innerHTML=html;
+  box.querySelectorAll('.ag-tool-cb').forEach(cb=>cb.addEventListener('change',syncToolSelection));
+  $('tool-all').onclick=()=>{box.querySelectorAll('.ag-tool-cb').forEach(c=>c.checked=true);syncToolSelection();};
+  $('tool-none').onclick=()=>{box.querySelectorAll('.ag-tool-cb').forEach(c=>c.checked=false);syncToolSelection();};
+  syncToolSelection();
+}
+
+// Sync checkbox state → hidden #ag-tools (JSON) + summary label. All checked = "[]" (= all).
+function syncToolSelection(){
+  const box=$('ag-tools-box'); if(!box) return;
+  const checked=[...box.querySelectorAll('.ag-tool-cb:checked')].map(c=>c.value);
+  const total=TOOL_NAMES.length;
+  const isAll = checked.length===total;
+  $('ag-tools').value = isAll ? '[]' : JSON.stringify(checked);
+  const sum=$('ag-tools-summary');
+  if(sum) sum.textContent = isAll ? 'All tools enabled'
+        : checked.length===0 ? 'No tools (saved as: all)'
+        : `${checked.length} of ${total} tools enabled`;
+}
 
 function fillVoiceSelect(sel){
   if(!sel) return;
@@ -637,13 +698,15 @@ window.saveAgentProfile=async()=>{
 window.editAgentProfile=async(id)=>{
   const p=await api(`/api/agent-profiles/${id}`);
   $('ag-id').value=p.id; $('ag-name').value=p.name||''; $('ag-voice').value=p.voice||'Aoede';
-  $('ag-model').value=p.model||'gemini-3.1-flash-live-preview'; $('ag-tools').value=p.enabled_tools||'[]';
+  $('ag-model').value=p.model||'gemini-3.1-flash-live-preview';
+  let _sel; try{ _sel=JSON.parse(p.enabled_tools||'[]'); }catch(e){ _sel=[]; }
+  renderToolChecks(Array.isArray(_sel)?_sel:[]);
   $('ag-prompt').value=p.system_prompt||''; $('ag-default').checked=!!p.is_default;
   $('agent-form-title').textContent='Edit Profile'; switchTab('agents'); window.scrollTo(0,0);
 };
 window.deleteAgentProfile=async(id,name)=>{ if(!confirm('Delete profile '+name+'?'))return; const r=await apiDel(`/api/agent-profiles/${id}`); if(r.ok){toast('Deleted');loadAgentProfiles();} };
 window.setDefaultAgentProfile=async(id,name)=>{ const r=await apiPost(`/api/agent-profiles/${id}/set-default`,{}); if(r.ok){toast('★ Default: '+name);loadAgentProfiles();} };
-window.resetAgentForm=()=>{ $('ag-id').value='';['ag-name','ag-prompt'].forEach(i=>$(i).value=''); $('ag-tools').value='[]'; $('ag-voice').value='Aoede'; $('ag-default').checked=false; $('agent-form-title').textContent='Create Profile'; };
+window.resetAgentForm=()=>{ $('ag-id').value='';['ag-name','ag-prompt'].forEach(i=>$(i).value=''); renderToolChecks([]); $('ag-voice').value='Aoede'; $('ag-default').checked=false; $('agent-form-title').textContent='Create Profile'; };
 $('ag-save').addEventListener('click', e=>{e.preventDefault();saveAgentProfile();});
 $('ag-reset').addEventListener('click', resetAgentForm);
 
@@ -735,6 +798,7 @@ $('log-clear').addEventListener('click', async ()=>{ if(!confirm('Clear all logs
 // ── Init ─────────────────────────────────────────────────────────
 function init(){
   fillVoiceSelect($('ag-voice'));
+  renderToolChecks([]);
   loadStats(); loadLiveConfig();
   loadCalls(1); loadAppointments(); loadLogs();
   loadAgentProfiles();
