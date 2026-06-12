@@ -381,12 +381,30 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         ctx.room.on("participant_disconnected", _on_participant_disconnected)
         ctx.room.on("disconnected", _on_disconnected)
 
+        # Hard cap on call length. Even if the model never calls end_call AND the
+        # carrier never sends a clean hangup, force-terminate at MAX_CALL_SECONDS
+        # so we never sit on a 1-hour open line recording dead air and burning
+        # Gemini + Vobiz + LiveKit minutes. Default 300s (5 min); tune via env.
+        _max_call_seconds = int(os.getenv("MAX_CALL_SECONDS", "300"))
+        _hit_cap = False
         try:
-            await asyncio.wait_for(_disconnect_event.wait(), timeout=3600)
+            await asyncio.wait_for(_disconnect_event.wait(), timeout=_max_call_seconds)
         except asyncio.TimeoutError:
-            await _log("warning", "Call reached 1-hour safety timeout — shutting down")
+            _hit_cap = True
+            await _log("warning", f"Call hit {_max_call_seconds}s hard cap — force-ending the call")
+            # Stopping our wait is NOT enough — the SIP leg would linger until the
+            # room's empty_timeout. Delete the room to drop the carrier leg (and
+            # stop egress) immediately, so the phone actually hangs up now.
+            try:
+                await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+                await _log("info", "Room deleted on hard cap — carrier leg dropped")
+            except Exception as _cap_exc:
+                await _log("error", f"Failed to delete room on hard cap: {_cap_exc}")
 
-        await _log("info", f"SIP participant disconnected — ending session for {phone_number}")
+        if _hit_cap:
+            await _log("info", f"Ending session for {phone_number} (hard cap reached)")
+        else:
+            await _log("info", f"SIP participant disconnected — ending session for {phone_number}")
 
         # SAFETY NET: guarantee every call lands in Supabase even if the model
         # never invoked end_call. Without this, a model that skips the tool means
@@ -398,7 +416,9 @@ async def entrypoint(ctx: agents.JobContext) -> None:
                 _cost = tool_ctx.usage.cost(os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview"))
                 await log_call(
                     phone_number=phone_number, lead_name=lead_name,
-                    outcome="completed", reason="auto-logged on disconnect (model did not call end_call)",
+                    outcome="completed",
+                    reason=(f"force-ended at {_max_call_seconds}s hard cap (model did not call end_call)"
+                            if _hit_cap else "auto-logged on disconnect (model did not call end_call)"),
                     duration_seconds=_dur, recording_url=tool_ctx.recording_url,
                     cost_usd=_cost,
                 )
