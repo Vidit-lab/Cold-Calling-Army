@@ -17,10 +17,14 @@ logger = logging.getLogger("appointment-tools")
 
 
 async def _log(msg: str, detail: str = "", level: str = "info") -> None:
+    # Emit to stdout FIRST — this survives even when Supabase is unreachable,
+    # which is exactly the case we're trying to diagnose. Then best-effort to DB.
+    line = f"{msg} | {detail}" if detail else msg
+    {"error": logger.error, "warning": logger.warning}.get(level, logger.info)(line)
     try:
         await log_error("agent", msg, detail, level)
-    except Exception:
-        pass
+    except Exception as exc:
+        logger.error("error_logs write ALSO failed (Supabase unreachable?): %s", exc)
 
 
 class AppointmentTools(llm.ToolContext):
@@ -55,12 +59,17 @@ class AppointmentTools(llm.ToolContext):
         date format: YYYY-MM-DD  |  time format: HH:MM (24-hour)
         Returns 'available' or 'unavailable: next available slot is <slot>'.
         """
+        await _log("TOOL check_availability called", f"date={date} time={time}")
         try:
             if await check_slot(date, time):
+                await _log("check_availability → available", f"{date} {time}")
                 return "available"
             next_slot = await get_next_available(date, time)
+            await _log("check_availability → unavailable", f"{date} {time}, next={next_slot}")
             return f"unavailable: next available slot is {next_slot}"
         except Exception as exc:
+            import traceback
+            await _log("check_availability ERROR", f"{date} {time}: {exc}\n{traceback.format_exc()}", "error")
             return "Unable to check availability right now — please suggest a date and I will confirm."
 
     @llm.function_tool
@@ -74,11 +83,18 @@ class AppointmentTools(llm.ToolContext):
         # Always book against the number we actually dialed; only fall back to an
         # LLM-supplied value if this call has no known phone (e.g. inbound/web test).
         actual_phone = self.phone_number or phone or "unknown"
+        await _log("TOOL book_appointment called",
+                   f"name={name} phone={actual_phone} (self.phone={self.phone_number}, llm_phone={phone}) "
+                   f"date={date} time={time} service={service}")
         try:
             booking_id = await insert_appointment(name, actual_phone, date, time, service)
+            await _log("✅ book_appointment SAVED to DB",
+                       f"booking_id={booking_id} phone={actual_phone} {date} {time} {service}")
             return f"Confirmed! Booking ID: {booking_id}. See you on {date} at {time} for {service}."
         except Exception as exc:
-            await _log("book_appointment FAILED to write to DB", f"{actual_phone} {date} {time}: {exc}", "error")
+            import traceback
+            await _log("❌ book_appointment FAILED to write to DB",
+                       f"{actual_phone} {date} {time}: {exc}\n{traceback.format_exc()}", "error")
             return "Technical issue saving the booking. Our team will confirm shortly."
 
     @llm.function_tool
@@ -89,15 +105,18 @@ class AppointmentTools(llm.ToolContext):
         reason: brief description
         """
         duration = int(time.time() - self._call_start_time)
+        await _log("TOOL end_call called", f"phone={self.phone_number} outcome={outcome} reason={reason} dur={duration}s")
         try:
             await log_call(
                 phone_number=self.phone_number or "unknown",
                 lead_name=self.lead_name, outcome=outcome, reason=reason,
                 duration_seconds=duration, recording_url=self.recording_url,
             )
+            await _log("✅ end_call SAVED call_log to DB", f"{self.phone_number} outcome={outcome}")
         except Exception as exc:
-            logger.error("Failed to log call: %s", exc)
-            await _log("end_call FAILED to write call_log to DB", f"{self.phone_number} {outcome}: {exc}", "error")
+            import traceback
+            await _log("❌ end_call FAILED to write call_log to DB",
+                       f"{self.phone_number} {outcome}: {exc}\n{traceback.format_exc()}", "error")
         try:
             await self.ctx.room.disconnect()
         except Exception:
@@ -168,6 +187,7 @@ class AppointmentTools(llm.ToolContext):
         phone: the lead's phone number with country code
         Returns call history, appointments, and remembered details.
         """
+        await _log("TOOL lookup_contact called", f"phone={phone}")
         try:
             calls = await get_calls_by_phone(phone)
             appointments = await get_appointments_by_phone(phone)

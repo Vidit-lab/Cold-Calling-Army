@@ -46,19 +46,32 @@ async def _log(level: str, msg: str, detail: str = "") -> None:
         pass
 
 
+# Never let DB-stored settings override the credentials we use to REACH the DB.
+# Otherwise a stale value saved via the dashboard silently redirects the worker
+# to a different Supabase, and nothing it writes shows up where the UI reads.
+_PROTECTED_BOOTSTRAP_KEYS = {"SUPABASE_URL", "SUPABASE_SERVICE_KEY"}
+
+
 def load_db_settings_to_env() -> None:
     """Load Supabase settings table into os.environ before worker starts."""
     url = os.getenv("SUPABASE_URL", "")
     key = os.getenv("SUPABASE_SERVICE_KEY", "")
     if not url or not key:
+        logger.error("SUPABASE_URL / SUPABASE_SERVICE_KEY missing in worker env — "
+                     "call_logs and appointments will NOT be saved.")
         return
+    logger.info("Worker Supabase target: %s", url)
     try:
         from supabase import create_client
         client = create_client(url, key)
         result = client.table("settings").select("key, value").execute()
         for row in (result.data or []):
+            k = row.get("key")
+            if k in _PROTECTED_BOOTSTRAP_KEYS:
+                continue  # keep the .env value that actually got us here
             if row.get("value"):
-                os.environ[row["key"]] = row["value"]
+                os.environ[k] = row["value"]
+        logger.info("✅ Worker loaded %d settings rows from Supabase", len(result.data or []))
     except Exception as exc:
         logger.warning("Could not load settings from Supabase: %s", exc)
 
