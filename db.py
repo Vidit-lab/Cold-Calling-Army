@@ -222,12 +222,16 @@ async def insert_appointment(name: str, phone: str, date: str, time: str, servic
 async def check_slot(date: str, time: str) -> bool:
     """Returns True if slot is available (no existing booking)."""
     db = await _adb()
+    # Do NOT use .maybe_single() here: when zero rows match (i.e. the slot is
+    # FREE — the common case) the async client returns None instead of a
+    # response, so result.data raises AttributeError and breaks the whole
+    # booking flow. .limit(1) always returns a normal (possibly empty) list.
     result = await (
         db.table("appointments").select("id")
         .eq("date", date).eq("time", time).eq("status", "booked")
-        .maybe_single().execute()
+        .limit(1).execute()
     )
-    return result.data is None
+    return not (result.data or [])
 
 
 async def get_next_available(date: str, time: str) -> str:

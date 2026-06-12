@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import ssl
+import time
 import certifi
 from typing import Optional
 
@@ -28,7 +29,7 @@ from livekit.plugins import noise_cancellation, silero
 from db import init_db, log_error, get_enabled_tools, log_worker_boot
 
 # Bump this whenever you deploy so the Logs tab shows which build is actually live.
-WORKER_VERSION = "booking-fix-v2"
+WORKER_VERSION = "booking-fix-v3-checkslot"
 from prompts import build_prompt
 from tools import AppointmentTools
 
@@ -358,6 +359,24 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             await _log("warning", "Call reached 1-hour safety timeout — shutting down")
 
         await _log("info", f"SIP participant disconnected — ending session for {phone_number}")
+
+        # SAFETY NET: guarantee every call lands in Supabase even if the model
+        # never invoked end_call. Without this, a model that skips the tool means
+        # the call never appears in Stats/CRM/Calls.
+        if not tool_ctx.call_logged:
+            try:
+                from db import log_call
+                _dur = int(time.time() - tool_ctx._call_start_time)
+                await log_call(
+                    phone_number=phone_number, lead_name=lead_name,
+                    outcome="completed", reason="auto-logged on disconnect (model did not call end_call)",
+                    duration_seconds=_dur, recording_url=tool_ctx.recording_url,
+                )
+                tool_ctx.call_logged = True
+                await _log("info", f"Fallback call_log written for {phone_number}")
+            except Exception as _exc:
+                await _log("error", f"Fallback call_log FAILED for {phone_number}: {_exc}")
+
         await session.aclose()
     else:
         _done = asyncio.Event()
