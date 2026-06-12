@@ -29,7 +29,7 @@ from livekit.plugins import noise_cancellation, silero
 from db import init_db, log_error, get_enabled_tools, log_worker_boot
 
 # Bump this whenever you deploy so the Logs tab shows which build is actually live.
-WORKER_VERSION = "booking-fix-v3-checkslot"
+WORKER_VERSION = "booking-fix-v4-recordings"
 from prompts import build_prompt
 from tools import AppointmentTools
 
@@ -305,19 +305,33 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         if _aws_key and _aws_secret and _aws_bucket:
             try:
                 _recording_path = f"recordings/{ctx.room.name}.ogg"
+                # Supabase's S3-compatible endpoint ONLY accepts path-style
+                # addressing (bucket in the PATH, not the hostname). Without
+                # force_path_style the egress uses virtual-hosted style, Supabase
+                # rejects it, and the upload fails AFTER the call — silently, so
+                # the recordings/ folder is never created. This flag is required.
                 _egress_req = api.RoomCompositeEgressRequest(
                     room_name=ctx.room.name, audio_only=True,
                     file_outputs=[api.EncodedFileOutput(
                         file_type=api.EncodedFileType.OGG, filepath=_recording_path,
                         s3=api.S3Upload(access_key=_aws_key, secret=_aws_secret,
-                                        bucket=_aws_bucket, region=_s3_region, endpoint=_s3_endpoint),
+                                        bucket=_aws_bucket, region=_s3_region, endpoint=_s3_endpoint,
+                                        force_path_style=True),
                     )],
                 )
                 _egress = await ctx.api.egress.start_room_composite_egress(_egress_req)
-                _s3_ep = _s3_endpoint.rstrip("/")
-                tool_ctx.recording_url = (f"{_s3_ep}/{_aws_bucket}/{_recording_path}"
-                                           if _s3_ep else f"s3://{_aws_bucket}/{_recording_path}")
-                await _log("info", f"Recording started: egress={_egress.egress_id}")
+                # Build a BROWSER-PLAYABLE URL, not the S3-protocol path.
+                # The egress UPLOADS via /storage/v1/s3 (signed), but that path
+                # can never be opened unsigned → "Missing signature / AccessDenied".
+                # For a PUBLIC bucket the playable URL is /storage/v1/object/public/.
+                _sb_base = os.getenv("SUPABASE_URL", "").rstrip("/")
+                if not _sb_base and _s3_endpoint:
+                    _sb_base = _s3_endpoint.split("/storage/v1/s3")[0].rstrip("/")
+                if _sb_base:
+                    tool_ctx.recording_url = f"{_sb_base}/storage/v1/object/public/{_aws_bucket}/{_recording_path}"
+                else:
+                    tool_ctx.recording_url = f"s3://{_aws_bucket}/{_recording_path}"
+                await _log("info", f"Recording started: egress={_egress.egress_id} url={tool_ctx.recording_url}")
             except Exception as _exc:
                 await _log("warning", f"Recording start failed (non-fatal): {_exc}")
 
