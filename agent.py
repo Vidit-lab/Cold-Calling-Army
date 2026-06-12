@@ -99,7 +99,7 @@ except ImportError:
 
 # ── Session factory ──────────────────────────────────────────────────────────
 
-def _build_session(tools: list, system_prompt: str) -> AgentSession:
+def _build_session(system_prompt: str) -> AgentSession:
     """
     Build AgentSession with Gemini Live or pipeline fallback.
 
@@ -145,7 +145,10 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
             realtime_kwargs["session_resumption"]         = _session_resumption_cfg
             realtime_kwargs["context_window_compression"] = _ctx_compression_cfg
 
-        return AgentSession(llm=RealtimeClass(**realtime_kwargs), tools=tools)
+        # NOTE: tools are registered on the Agent (OutboundAssistant), NOT here.
+        # AgentSession has no `tools` param in livekit-agents 1.x — passing it
+        # silently drops the tools and the model can never book/log anything.
+        return AgentSession(llm=RealtimeClass(**realtime_kwargs))
 
     if _google_llm is None:
         raise RuntimeError("No Google AI backend. Run: pip install 'livekit-plugins-google>=1.0'")
@@ -153,12 +156,15 @@ def _build_session(tools: list, system_prompt: str) -> AgentSession:
     logger.info("SESSION MODE: pipeline (Deepgram STT + Gemini LLM + Google TTS)")
     stt = _deepgram_stt(model="nova-3", language="multi") if _deepgram_stt else None
     tts = _google_tts() if _google_tts else None
-    return AgentSession(stt=stt, llm=_google_llm(model="gemini-2.0-flash"), tts=tts, vad=silero.VAD.load(), tools=tools)
+    return AgentSession(stt=stt, llm=_google_llm(model="gemini-2.0-flash"), tts=tts, vad=silero.VAD.load())
 
 
 class OutboundAssistant(Agent):
-    def __init__(self, instructions: str) -> None:
-        super().__init__(instructions=instructions)
+    def __init__(self, instructions: str, tools: Optional[list] = None) -> None:
+        # Tools MUST be attached to the Agent so the LLM can actually call them
+        # (book_appointment, end_call, lookup_contact, …). Without this the model
+        # talks normally but never invokes a single tool.
+        super().__init__(instructions=instructions, tools=tools or [])
 
 
 async def entrypoint(ctx: agents.JobContext) -> None:
@@ -250,7 +256,8 @@ async def entrypoint(ctx: agents.JobContext) -> None:
     await _log("info", f"Building AI session — model={gemini_model}")
     active_tools = tool_ctx.build_tool_list(enabled_tools)
     await _log("info", f"Tools loaded: {[t.__name__ for t in active_tools]}")
-    session = _build_session(tools=active_tools, system_prompt=system_prompt)
+    session = _build_session(system_prompt=system_prompt)
+    assistant = OutboundAssistant(instructions=system_prompt, tools=active_tools)
 
     # Use RoomOptions if available (non-deprecated), else fall back
     # NEVER use close_on_disconnect=True with SIP — drops on any audio blip
@@ -258,13 +265,13 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         from livekit.agents import RoomOptions as _RO
         _session_kwargs = dict(
             room=ctx.room,
-            agent=OutboundAssistant(instructions=system_prompt),
+            agent=assistant,
             room_options=_RO(input_options=RoomInputOptions(noise_cancellation=noise_cancellation.BVCTelephony())),
         )
     else:
         _session_kwargs = dict(
             room=ctx.room,
-            agent=OutboundAssistant(instructions=system_prompt),
+            agent=assistant,
             room_input_options=RoomInputOptions(noise_cancellation=noise_cancellation.BVCTelephony()),
         )
 

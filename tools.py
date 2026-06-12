@@ -78,6 +78,7 @@ class AppointmentTools(llm.ToolContext):
             booking_id = await insert_appointment(name, actual_phone, date, time, service)
             return f"Confirmed! Booking ID: {booking_id}. See you on {date} at {time} for {service}."
         except Exception as exc:
+            await _log("book_appointment FAILED to write to DB", f"{actual_phone} {date} {time}: {exc}", "error")
             return "Technical issue saving the booking. Our team will confirm shortly."
 
     @llm.function_tool
@@ -96,6 +97,7 @@ class AppointmentTools(llm.ToolContext):
             )
         except Exception as exc:
             logger.error("Failed to log call: %s", exc)
+            await _log("end_call FAILED to write call_log to DB", f"{self.phone_number} {outcome}: {exc}", "error")
         try:
             await self.ctx.room.disconnect()
         except Exception:
