@@ -292,6 +292,18 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             room_input_options=RoomInputOptions(noise_cancellation=noise_cancellation.BVCTelephony()),
         )
 
+    # ── Per-call cost tracking ───────────────────────────────────────────────
+    # Gemini reports token usage (split by modality) in its own usageMetadata;
+    # LiveKit surfaces it via metrics_collected. We accumulate it on tool_ctx so
+    # both end_call and the disconnect fallback can price the call. This reads
+    # Gemini's numbers only — it is NOT LiveKit-cost tracking.
+    @session.on("metrics_collected")
+    def _on_metrics(ev) -> None:
+        try:
+            tool_ctx.usage.add(getattr(ev, "metrics", ev))
+        except Exception as _mx:
+            logger.warning("usage metrics fold failed: %s", _mx)
+
     await session.start(**_session_kwargs)
     await _log("info", "Agent session started — AI ready, generating greeting")
 
@@ -383,13 +395,15 @@ async def entrypoint(ctx: agents.JobContext) -> None:
             try:
                 from db import log_call
                 _dur = int(time.time() - tool_ctx._call_start_time)
+                _cost = tool_ctx.usage.cost(os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview"))
                 await log_call(
                     phone_number=phone_number, lead_name=lead_name,
                     outcome="completed", reason="auto-logged on disconnect (model did not call end_call)",
                     duration_seconds=_dur, recording_url=tool_ctx.recording_url,
+                    cost_usd=_cost,
                 )
                 tool_ctx.call_logged = True
-                await _log("info", f"Fallback call_log written for {phone_number}")
+                await _log("info", f"Fallback call_log written for {phone_number} (cost=${_cost:.4f})")
             except Exception as _exc:
                 await _log("error", f"Fallback call_log FAILED for {phone_number}: {_exc}")
 

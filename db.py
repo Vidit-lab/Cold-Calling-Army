@@ -276,6 +276,7 @@ async def get_appointments_by_phone(phone: str) -> list:
 async def log_call(
     phone_number: str, lead_name: Optional[str], outcome: str, reason: str,
     duration_seconds: int, recording_url: Optional[str] = None, notes: Optional[str] = None,
+    cost_usd: Optional[float] = None,
 ) -> None:
     db = await _adb()
     row: dict = {
@@ -287,6 +288,8 @@ async def log_call(
         row["recording_url"] = recording_url
     if notes:
         row["notes"] = notes
+    if cost_usd is not None:
+        row["cost_usd"] = cost_usd
     await db.table("call_logs").insert(row).execute()
 
 
@@ -332,13 +335,16 @@ async def get_contacts() -> list:
 
 async def get_stats() -> dict:
     db = await _adb()
-    rows = (await db.table("call_logs").select("outcome, duration_seconds, timestamp").execute()).data or []
+    rows = (await db.table("call_logs").select("outcome, duration_seconds, timestamp, cost_usd").execute()).data or []
     total_calls    = len(rows)
     booked         = sum(1 for r in rows if r.get("outcome") == "booked")
     not_interested = sum(1 for r in rows if r.get("outcome") == "not_interested")
     durations      = [r["duration_seconds"] for r in rows if r.get("duration_seconds")]
     avg_dur        = sum(durations) / len(durations) if durations else 0
     booking_rate   = round((booked / total_calls * 100) if total_calls else 0, 1)
+    costs          = [float(r["cost_usd"]) for r in rows if r.get("cost_usd") is not None]
+    total_cost     = round(sum(costs), 4)
+    avg_cost       = round(sum(costs) / len(costs), 4) if costs else 0
     # Outcomes breakdown
     outcomes: dict = {}
     for r in rows:
@@ -366,6 +372,7 @@ async def get_stats() -> dict:
         "total_calls": total_calls, "booked": booked, "not_interested": not_interested,
         "avg_duration_seconds": round(avg_dur, 1), "booking_rate_percent": booking_rate,
         "outcomes": outcomes, "timeline": timeline, "duration_by_outcome": duration_by_outcome,
+        "total_cost_usd": total_cost, "avg_cost_usd": avg_cost,
     }
 
 

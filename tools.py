@@ -38,6 +38,8 @@ class AppointmentTools(llm.ToolContext):
         self._sip_domain = os.getenv("VOBIZ_SIP_DOMAIN", "")
         self.call_logged = False  # set True once a call_log row is written (by end_call or the fallback)
         self.recording_url: Optional[str] = None
+        from cost import CallUsage
+        self.usage = CallUsage()  # fed by the session's metrics_collected event in agent.py
         super().__init__(tools=[])
 
     def build_tool_list(self, enabled: list) -> list:
@@ -106,15 +108,20 @@ class AppointmentTools(llm.ToolContext):
         reason: brief description
         """
         duration = int(time.time() - self._call_start_time)
-        await _log("TOOL end_call called", f"phone={self.phone_number} outcome={outcome} reason={reason} dur={duration}s")
+        _model = os.getenv("GEMINI_MODEL", "gemini-3.1-flash-live-preview")
+        _cost = self.usage.cost(_model)
+        await _log("TOOL end_call called",
+                   f"phone={self.phone_number} outcome={outcome} reason={reason} dur={duration}s "
+                   f"cost=${_cost:.4f} tokens={self.usage.total_tokens()}")
         try:
             await log_call(
                 phone_number=self.phone_number or "unknown",
                 lead_name=self.lead_name, outcome=outcome, reason=reason,
                 duration_seconds=duration, recording_url=self.recording_url,
+                cost_usd=_cost,
             )
             self.call_logged = True
-            await _log("✅ end_call SAVED call_log to DB", f"{self.phone_number} outcome={outcome}")
+            await _log("✅ end_call SAVED call_log to DB", f"{self.phone_number} outcome={outcome} cost=${_cost:.4f}")
         except Exception as exc:
             import traceback
             await _log("❌ end_call FAILED to write call_log to DB",

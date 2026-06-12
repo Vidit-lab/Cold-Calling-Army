@@ -45,6 +45,8 @@ ALTER TABLE error_logs    DISABLE ROW LEVEL SECURITY;
 
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS recording_url TEXT;
 ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS notes TEXT;
+-- Estimated Gemini Live spend for this call (USD): per-modality tokens × price table.
+ALTER TABLE call_logs ADD COLUMN IF NOT EXISTS cost_usd NUMERIC;
 
 CREATE TABLE IF NOT EXISTS campaigns (
     id TEXT PRIMARY KEY,

@@ -190,6 +190,8 @@ ol code,p code{background:rgba(124,58,237,.16);border:1px solid rgba(124,58,237,
     <div class="kpi"><div class="num" id="k-ni">0</div><div class="lbl">Not Interested</div></div>
     <div class="kpi"><div class="num" id="k-rate">0%</div><div class="lbl">Booking Rate</div></div>
     <div class="kpi"><div class="num" id="k-dur">0s</div><div class="lbl">Avg Duration</div></div>
+    <div class="kpi"><div class="num" id="k-spend">$0</div><div class="lbl">Total Spend</div></div>
+    <div class="kpi"><div class="num" id="k-avgcost">$0</div><div class="lbl">Avg Cost / Call</div></div>
   </div>
   <div class="card" style="margin-top:20px">
     <h3>Live Configuration</h3>
@@ -347,8 +349,8 @@ ol code,p code{background:rgba(124,58,237,.16);border:1px solid rgba(124,58,237,
 <section class="panel" id="panel-calls">
   <h2>📝 Call Logs</h2>
   <div class="card">
-    <table><thead><tr><th>Phone</th><th>Lead</th><th>Outcome</th><th>Reason</th><th>Duration</th><th>When</th><th>Recording</th><th>Notes</th></tr></thead>
-    <tbody id="calls-tbody"><tr><td colspan="8" class="muted">No calls yet.</td></tr></tbody></table>
+    <table><thead><tr><th>Phone</th><th>Lead</th><th>Outcome</th><th>Reason</th><th>Duration</th><th>Money Spent</th><th>When</th><th>Recording</th><th>Notes</th></tr></thead>
+    <tbody id="calls-tbody"><tr><td colspan="9" class="muted">No calls yet.</td></tr></tbody></table>
     <div class="pagination">
       <button class="btn sec small" id="calls-prev">‹ Prev</button>
       <span class="muted">Page <b id="calls-page">1</b></span>
@@ -521,6 +523,8 @@ async function loadStats(){
     $('k-ni').textContent=d.not_interested;
     $('k-rate').textContent=(d.booking_rate_percent||0)+'%';
     $('k-dur').textContent=(d.avg_duration_seconds||0)+'s';
+    $('k-spend').textContent='$'+(Number(d.total_cost_usd)||0).toFixed(2);
+    $('k-avgcost').textContent='$'+(Number(d.avg_cost_usd)||0).toFixed(4);
     _renderCharts(d);
   }catch(e){ /* ignore */ }
 }
@@ -743,14 +747,15 @@ async function loadCalls(page=1){
   _callsPage=page; $('calls-page').textContent=page;
   const list=await api(`/api/calls?page=${page}&limit=20`);
   const tb=$('calls-tbody');
-  if(!Array.isArray(list)||!list.length){tb.innerHTML='<tr><td colspan="8" class="muted">No calls.</td></tr>';return;}
+  if(!Array.isArray(list)||!list.length){tb.innerHTML='<tr><td colspan="9" class="muted">No calls.</td></tr>';return;}
   tb.innerHTML=list.map(c=>{
     const out=c.outcome||'unknown';
     const rec=c.recording_url?`<a href="${esc(c.recording_url)}" target="_blank">▶</a>`:'—';
+    const spent=c.cost_usd!=null?'$'+Number(c.cost_usd).toFixed(4):'—';
     return `<tr>
       <td>${esc(c.phone_number)}</td><td>${esc(c.lead_name||'—')}</td>
       <td><span class="badge b-${esc(out)}">${esc(out)}</span></td><td class="muted">${esc(c.reason||'')}</td>
-      <td>${c.duration_seconds||0}s</td><td class="muted">${esc((c.timestamp||'').slice(0,16))}</td><td>${rec}</td>
+      <td>${c.duration_seconds||0}s</td><td>${spent}</td><td class="muted">${esc((c.timestamp||'').slice(0,16))}</td><td>${rec}</td>
       <td><input value="${esc(c.notes||'')}" id="note-${c.id}" style="font-size:12px;padding:4px" onblur="saveNotes('${c.id}')"></td>
     </tr>`;
   }).join('');
@@ -771,8 +776,8 @@ async function loadCRM(){
 }
 window.loadContactDetail=async(phone)=>{
   const res=await api('/api/crm/calls?phone='+encodeURIComponent(phone)); const calls=res.data||[];
-  let html=`<div class="drill"><h3>History — ${esc(phone)} (${calls.length} calls)</h3><table><thead><tr><th>When</th><th>Outcome</th><th>Reason</th><th>Duration</th><th>Notes</th></tr></thead><tbody>`;
-  html+=calls.map(c=>`<tr><td class="muted">${esc((c.timestamp||'').slice(0,16))}</td><td><span class="badge b-${esc(c.outcome||'unknown')}">${esc(c.outcome||'—')}</span></td><td class="muted">${esc(c.reason||'')}</td><td>${c.duration_seconds||0}s</td><td class="muted">${esc(c.notes||'')}</td></tr>`).join('');
+  let html=`<div class="drill"><h3>History — ${esc(phone)} (${calls.length} calls)</h3><table><thead><tr><th>When</th><th>Outcome</th><th>Reason</th><th>Duration</th><th>Money Spent</th><th>Notes</th></tr></thead><tbody>`;
+  html+=calls.map(c=>`<tr><td class="muted">${esc((c.timestamp||'').slice(0,16))}</td><td><span class="badge b-${esc(c.outcome||'unknown')}">${esc(c.outcome||'—')}</span></td><td class="muted">${esc(c.reason||'')}</td><td>${c.duration_seconds||0}s</td><td>${c.cost_usd!=null?'$'+Number(c.cost_usd).toFixed(4):'—'}</td><td class="muted">${esc(c.notes||'')}</td></tr>`).join('');
   html+='</tbody></table></div>'; $('crm-detail').innerHTML=html;
 };
 
