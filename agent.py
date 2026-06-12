@@ -29,7 +29,7 @@ from livekit.plugins import noise_cancellation, silero
 from db import init_db, log_error, get_enabled_tools, log_worker_boot
 
 # Bump this whenever you deploy so the Logs tab shows which build is actually live.
-WORKER_VERSION = "booking-fix-v4-recordings"
+WORKER_VERSION = "booking-fix-v5-egress-status"
 from prompts import build_prompt
 from tools import AppointmentTools
 
@@ -296,6 +296,7 @@ async def entrypoint(ctx: agents.JobContext) -> None:
     await _log("info", "Agent session started — AI ready, generating greeting")
 
     # ── Optional S3 recording ────────────────────────────────────────────────
+    _egress_id: Optional[str] = None
     if phone_number:
         _aws_key    = os.getenv("S3_ACCESS_KEY_ID") or os.getenv("AWS_ACCESS_KEY_ID", "")
         _aws_secret = os.getenv("S3_SECRET_ACCESS_KEY") or os.getenv("AWS_SECRET_ACCESS_KEY", "")
@@ -320,6 +321,7 @@ async def entrypoint(ctx: agents.JobContext) -> None:
                     )],
                 )
                 _egress = await ctx.api.egress.start_room_composite_egress(_egress_req)
+                _egress_id = _egress.egress_id
                 # Build a BROWSER-PLAYABLE URL, not the S3-protocol path.
                 # The egress UPLOADS via /storage/v1/s3 (signed), but that path
                 # can never be opened unsigned → "Missing signature / AccessDenied".
@@ -390,6 +392,29 @@ async def entrypoint(ctx: agents.JobContext) -> None:
                 await _log("info", f"Fallback call_log written for {phone_number}")
             except Exception as _exc:
                 await _log("error", f"Fallback call_log FAILED for {phone_number}: {_exc}")
+
+        # Surface the egress UPLOAD result into the dashboard Logs tab so the
+        # actual S3 error (SignatureDoesNotMatch / AccessDenied / NoSuchBucket…)
+        # is visible without opening the LiveKit Cloud UI.
+        if _egress_id:
+            try:
+                for _ in range(12):  # poll up to ~24s for a terminal status
+                    _res = await ctx.api.egress.list_egress(api.ListEgressRequest(egress_id=_egress_id))
+                    if _res.items:
+                        _e = _res.items[0]
+                        _terminal = {api.EgressStatus.EGRESS_COMPLETE, api.EgressStatus.EGRESS_FAILED,
+                                     api.EgressStatus.EGRESS_ABORTED, api.EgressStatus.EGRESS_LIMIT_REACHED}
+                        if _e.status in _terminal:
+                            _sname = api.EgressStatus.Name(_e.status)
+                            if _e.status == api.EgressStatus.EGRESS_COMPLETE:
+                                await _log("info", f"✅ Recording uploaded: egress={_egress_id} status={_sname}")
+                            else:
+                                await _log("error", f"❌ Recording upload FAILED: egress={_egress_id} "
+                                                    f"status={_sname} error={_e.error or '(none)'}")
+                            break
+                    await asyncio.sleep(2)
+            except Exception as _exc:
+                await _log("warning", f"Could not fetch egress status for {_egress_id}: {_exc}")
 
         await session.aclose()
     else:
