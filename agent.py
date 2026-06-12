@@ -398,7 +398,8 @@ async def entrypoint(ctx: agents.JobContext) -> None:
         # is visible without opening the LiveKit Cloud UI.
         if _egress_id:
             try:
-                for _ in range(12):  # poll up to ~24s for a terminal status
+                for _ in range(4):  # poll up to ~8s — must fit inside LiveKit's
+                                    # ~15s entrypoint-shutdown grace or it gets cancelled
                     _res = await ctx.api.egress.list_egress(api.ListEgressRequest(egress_id=_egress_id))
                     if _res.items:
                         _e = _res.items[0]
