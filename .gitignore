@@ -12,3 +12,9 @@ node_modules/
 dist/
 build/
 .DS_Store
+
+# Large media — exceeds GitHub's 100MB file limit; host externally (Release / Drive / YouTube)
+Demo Video/
+*.mp4
+*.mov
+*.webm
