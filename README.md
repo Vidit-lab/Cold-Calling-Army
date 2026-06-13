@@ -1,6 +1,6 @@
 <div align="center">
 
-# Cold-Calling-Army
+# 📞 Cold-Calling-Army
 
 ### Autonomous outbound voice agent that dials real phone numbers, holds a live spoken conversation with Gemini, and books appointments — end to end.
 
@@ -15,24 +15,24 @@
 
 ---
 
-## 1. Overview
+## 1. 📖 Overview
 
 **Cold-Calling-Army** (internally *OutboundAI*) is a single-operator platform for running **autonomous outbound phone campaigns**. You upload leads or trigger a call from a dashboard; the system places a real PSTN call, and once the lead answers, a **Gemini Live** voice agent conducts the conversation natively (speech-in / speech-out), qualifies the lead, checks availability, and books an appointment — invoking real backend tools as it talks.
 
 Every call is recorded, every outcome is logged, and every call's **Gemini token cost** is estimated and stored, so the dashboard shows booking rate, call outcomes, durations, and spend.
 
-**Primary use cases**
+**🎯 Primary use cases**
 - Appointment setting and lead qualification at volume
 - Reminder / callback campaigns on a daily or weekday schedule
 - Any outbound flow where a human script would otherwise be read line-by-line
 
-**Core value proposition** — it replaces the repetitive first-touch outbound call with an AI agent that is *observable* (full logs + recordings), *cost-aware* (per-call USD estimate), and *configurable* (swap the agent's voice, model, prompt, and enabled tools per campaign without a redeploy). It is built as a small, honest system: one container, managed cloud dependencies, and a clear set of reliability mechanisms earned from real failure modes.
+**💡 Core value proposition** — it replaces the repetitive first-touch outbound call with an AI agent that is *observable* (full logs + recordings), *cost-aware* (per-call USD estimate), and *configurable* (swap the agent's voice, model, prompt, and enabled tools per campaign without a redeploy). It is built as a small, honest system: one container, managed cloud dependencies, and a clear set of reliability mechanisms earned from real failure modes.
 
-> **Scope honesty:** this is a working MVP. It is single-tenant (no auth layer), uses logical (FK-free) joins, and tracks Gemini cost only (carrier/LiveKit minutes are separate). The [Future Improvements](#10-future-improvements) section is explicit about these boundaries.
+> ⚠️ **Scope honesty:** this is a working MVP. It is single-tenant (no auth layer), uses logical (FK-free) joins, and tracks Gemini cost only (carrier/LiveKit minutes are separate). The **Future Improvements** section below is explicit about these boundaries.
 
 ---
 
-## 2. Quick Video Demo
+## 2. 🎬 Quick Video Demo
 
 A full walkthrough — dispatching a call, the live conversation, booking, recording playback, and the analytics dashboard.
 
@@ -42,13 +42,13 @@ A full walkthrough — dispatching a call, the live conversation, booking, recor
 
 ---
 
-## 3. Architecture Overview
+## 3. 🏗️ Architecture Overview
 
 The system is a **dispatch-and-converse** design. The API server never speaks to the lead — it mints a LiveKit room and a job; a separate worker process owns the actual call. One job = one room = one phone call.
 
 ![Voice Agent Architecture](Design%20Diagrams/VoiceAgentArchitecture.png)
 
-**Major subsystems**
+**🧩 Major subsystems**
 
 | Subsystem | Responsibility |
 |-----------|----------------|
@@ -60,18 +60,18 @@ The system is a **dispatch-and-converse** design. The API server never speaks to
 | **AI** | Gemini Live (native audio) primary; Deepgram + Gemini 2.0 + Google TTS pipeline fallback |
 | **Telephony** | LiveKit Cloud (media / SIP / dispatch / egress) bridged to a Vobiz SIP trunk → PSTN |
 
-**Information flow (one call):** Dashboard → `POST /api/call` → LiveKit room + agent dispatch → Worker connects → **dials via Vobiz and waits for answer** → starts Gemini Live + recording → conversation loop with tool calls → writes appointment / SMS / Cal.com → `end_call` logs outcome, duration, recording URL, and cost to Supabase.
+**🔄 Information flow (one call):** Dashboard → `POST /api/call` → LiveKit room + agent dispatch → Worker connects → **dials via Vobiz and waits for answer** → starts Gemini Live + recording → conversation loop with tool calls → writes appointment / SMS / Cal.com → `end_call` logs outcome, duration, recording URL, and cost to Supabase.
 
-### The four key diagrams
+### 🗺️ The four key diagrams
 
-#### 3.1 — Voice Agent Architecture *(shown above)*
+#### 3.1 — 🎙️ Voice Agent Architecture *(shown above)*
 
 - **Purpose:** the signal path and lifecycle of a single live call.
 - **Components:** Lead (PSTN) ↔ Vobiz ↔ LiveKit Cloud ↔ Gemini Live ↔ Tool Layer ↔ Supabase.
 - **Data flow:** audio is a closed loop (lead → carrier → LiveKit → Gemini → back), bidirectional **only after answer**; tool calls branch off Gemini and return short spoken strings.
 - **Key tradeoff — the dial-first invariant:** the Gemini session starts *only after* `create_sip_participant(wait_until_answered=True)` returns. Starting during the 20–30 s ring would trip Gemini's idle timeout and silently kill the session before hello.
 
-#### 3.2 — CRM & Tool Orchestration
+#### 3.2 — 🗂️ CRM & Tool Orchestration
 
 ![CRM Architecture](Design%20Diagrams/CRMArchitecture.png)
 
@@ -80,7 +80,7 @@ The system is a **dispatch-and-converse** design. The API server never speaks to
 - **Data flow:** the **Contact is virtual** — there is no `contacts` table; a contact is the set of `call_logs`, `appointments`, and `contact_memory` rows sharing a `phone_number`, reassembled at call start by `lookup_contact`.
 - **Responsibilities:** tools execute side effects and report back; the model stays the single decision-maker. Memory self-prunes via a cheap Gemini 2.0 Flash pass once a contact exceeds five notes.
 
-#### 3.3 — Deployment Architecture
+#### 3.3 — 🐳 Deployment Architecture
 
 ![Deployment Architecture](Design%20Diagrams/DeploymentArchitecture.png)
 
@@ -89,7 +89,7 @@ The system is a **dispatch-and-converse** design. The API server never speaks to
 - **Data flow:** Coolify injects env and health-checks `:8000`; `start.sh` forks the worker into a 5-second restart loop, then `exec`s Uvicorn.
 - **Key tradeoff:** monolithic-but-resilient — trivial to deploy, and a worker crash never flips the deployment unhealthy, at the cost of shared CPU/memory between dashboard and worker.
 
-#### 3.4 — Appointment Booking Flow
+#### 3.4 — 📅 Appointment Booking Flow
 
 ![Booking Flow](Design%20Diagrams/BookingFlow.png)
 
@@ -100,43 +100,43 @@ The system is a **dispatch-and-converse** design. The API server never speaks to
 
 ---
 
-## 4. Core Concepts & Design Decisions
+## 4. 🧠 Core Concepts & Design Decisions
 
 Modern voice-AI system patterns that are actually implemented here:
 
-### Agent Runtime
+### 🤖 Agent Runtime
 A LiveKit Agent worker registered as `outbound-caller`. Each call is an isolated job with its own room, prompt, tool set, and in-memory context (`AppointmentTools`). **Why:** isolates call state per process and scales by adding worker slots.
 
-### Tool Orchestration
+### 🧰 Tool Orchestration
 Nine tools attached to the **Agent** (not the session — a documented LiveKit 1.x footgun where session-level tools are silently dropped). An **allow-list** (`build_tool_list`) gates which tools a given agent profile may use. **Why:** one codebase becomes many "agents" by toggling tools + prompt as data, not code.
 
-### Call State Machine
+### 🔁 Call State Machine
 A per-call lifecycle that converges to a logged terminal state: `INIT → CONNECTING → DIALING → ANSWERED → SESSION_START → (LISTEN ⇄ THINK ⇄ SPEAK / TOOL) → ENDING → LOGGING → COMPLETED`. **Why:** guarantees no call ends untracked — a safety net writes a `call_log` row even if the model forgets to call `end_call`.
 
-### Cost Attribution Engine
+### 💰 Cost Attribution Engine
 `cost.py` folds Gemini's own `usageMetadata` (surfaced via LiveKit's `metrics_collected` event) into per-modality token totals, then prices them against a published table — keeping the audio/text split because audio output ($12/1M) dwarfs text. **Why:** live per-call cost visibility; it's an *estimate*, reconciled monthly against Google billing.
 
-### Event-Driven Hooks
+### ⚡ Event-Driven Hooks
 The worker reacts to events rather than polling: `metrics_collected` (cost), `participant_disconnected` for the specific SIP identity (clean teardown), and agent dispatch from the API server. **Why:** decouples the conversation loop from lifecycle bookkeeping.
 
-### CRM Synchronization
+### 🔗 CRM Synchronization
 A phone-keyed, schema-on-read CRM: writes accrue across `call_logs` / `appointments` / `contact_memory`; reads reassemble the contact on the next call. **Why:** the agent "remembers" a lead across calls without a dedicated contacts table.
 
-### Conversational Memory
+### 💭 Conversational Memory
 `remember_details` persists free-text insights; a Gemini 2.0 Flash pass compresses them to 3–5 bullets past five notes. **Why:** bounds context growth and keeps the expensive realtime model's prompt lean.
 
-### Observability Pipeline
+### 🔭 Observability Pipeline
 A stdout-first, Supabase-backed log spine (`error_logs`), a worker **boot marker** that proves which build is live, and post-call **egress status polling** that surfaces silent S3 upload failures. **Why:** debuggable in production without external tooling (tracing/metrics/alerting are explicit future work).
 
-### Human Handoff Layer
+### 🤝 Human Handoff Layer
 `transfer_to_human` performs a SIP `REFER` to a configured fallback number. **Why:** graceful escalation when automation shouldn't continue (angry lead, complex request, explicit ask).
 
-### Reliability Mechanisms
+### 🛡️ Reliability Mechanisms
 Dial-first ordering, transparent session resumption, context-window compression, low end-of-speech VAD sensitivity, *no* `close_on_disconnect` (SIP blips ≠ hangup), a `MAX_CALL_SECONDS` hard cap that deletes the room to drop the carrier leg, a realtime→pipeline fallback, and a worker auto-restart loop. **Why:** each one exists because a specific failure mode was observed in production.
 
 ---
 
-## 5. Repository Structure
+## 5. 📂 Repository Structure
 
 ```
 Cold-Calling-Army/
@@ -162,7 +162,7 @@ Cold-Calling-Army/
 
 ---
 
-## 6. Technology Stack
+## 6. 🛠️ Technology Stack
 
 | Layer | Technology | Purpose & architectural significance |
 |-------|------------|--------------------------------------|
@@ -183,14 +183,14 @@ Cold-Calling-Army/
 
 ---
 
-## 7. Setup & Installation
+## 7. ⚙️ Setup & Installation
 
-### Prerequisites
+### 📋 Prerequisites
 - **Python 3.11**
 - Accounts / credentials for: **LiveKit Cloud**, **Google AI (Gemini)**, **Supabase**, and a **Vobiz** SIP trunk
 - Optional: **Cal.com**, **Twilio**, **Deepgram** (each degrades gracefully if absent)
 
-### Install
+### 📥 Install
 ```bash
 git clone https://github.com/Vidit-lab/Cold-Calling-Army.git
 cd Cold-Calling-Army
@@ -198,20 +198,20 @@ pip install -r requirements.txt
 cp .env.example .env        # then fill in your credentials
 ```
 
-### Initialize the database
+### 🗄️ Initialize the database
 Run [`supabase_schema.sql`](supabase_schema.sql) in **Supabase → SQL Editor**. It is idempotent (safe to re-run). Verify connectivity any time with:
 ```bash
 python diagnose_db.py
 ```
 
-### Create the SIP trunk
+### ☎️ Create the SIP trunk
 With LiveKit + Vobiz credentials set, create the outbound trunk once (stores `OUTBOUND_TRUNK_ID`):
 ```bash
 curl -X POST http://localhost:8000/api/setup/trunk
 ```
 (or use the **Setup** tab in the dashboard).
 
-### Local development
+### 💻 Local development
 Run the two processes separately:
 ```bash
 # Terminal 1 — dashboard + API (hot reload)
@@ -222,7 +222,7 @@ python agent.py dev
 ```
 Open **http://localhost:8000**.
 
-### Production
+### 🚢 Production
 The container runs both processes via `start.sh` (worker in the background with auto-restart, Uvicorn in the foreground):
 ```bash
 docker build -t outboundai .
@@ -232,7 +232,7 @@ On **Coolify**, point it at the repo, inject the environment variables, and let 
 
 ---
 
-## 8. Configuration
+## 8. 🔧 Configuration
 
 All configuration is environment-driven (see [`.env.example`](.env.example)). The `settings` table can override most non-bootstrap keys at runtime; agent profiles and `ENABLED_TOOLS` act as per-call feature toggles.
 
@@ -257,31 +257,31 @@ All configuration is environment-driven (see [`.env.example`](.env.example)). Th
 
 ---
 
-## 9. Future Improvements
+## 9. 🚀 Future Improvements
 
-**Scalability**
+**📈 Scalability**
 - Split the dashboard and worker into independent deployments; run a worker pool keyed off LiveKit dispatch for parallel campaigns.
 - Add Postgres connection pooling (Supavisor) and indexes on `call_logs(phone_number, timestamp)` and `appointments(date, time, status)`.
 - Push `get_stats` aggregation into SQL (views / `GROUP BY`) and pre-aggregate daily rollups to stop full-table scans on every poll.
 
-**Reliability**
+**🧯 Reliability**
 - Add a unique constraint on `appointments(date, time)` (partial, `status='booked'`) to close the double-book race; make `book_appointment` idempotent.
 - Introduce a dead-letter path for failed dials so the funnel is complete and re-dialable.
 - Deepen the health check to verify worker heartbeat + DB reachability (today only `:8000` liveness is checked).
 
-**AI capabilities**
+**✨ AI capabilities**
 - Add `agent_profile_id` / `campaign_id` to `call_logs` to enable per-agent and per-campaign A/B analysis (the current star-schema gap).
 - Persist `calcom_booking_uid` on the appointment row so cross-call Cal.com cancellation works.
 - Externalize the cost price table and split per-modality token counts into a dedicated cost table for finance-grade reporting.
 
-**Operational**
+**📟 Operational**
 - Add correlation/trace IDs across server → LiveKit → worker → Gemini, a metrics exporter (Prometheus), log retention, and alerting on dial-failure and worker restart-loop rates.
 - Move timestamps to `timestamptz` / UTC.
 - Introduce auth + Supabase RLS and an `org_id` for multi-tenancy.
 
 ---
 
-## 10. Acknowledgements
+## 10. 🙏 Acknowledgements
 
 Built on the work of:
 
