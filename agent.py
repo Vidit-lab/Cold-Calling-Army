@@ -263,7 +263,35 @@ async def entrypoint(ctx: agents.JobContext) -> None:
                 )
             )
         except Exception as exc:
+            # Classify the carrier's SIP response so the dashboard shows WHY the
+            # dial failed instead of a generic error. A 486/603 (or a 429
+            # resource_exhausted wrapper) means the TRUNK rejected the INVITE —
+            # busy / no free channel / rate-limited / blocked destination — it is
+            # NOT a bug in this code, and retrying immediately only worsens a 429.
+            _msg = str(exc)
+            if "486" in _msg or "Busy Here" in _msg:
+                _outcome, _reason = "busy", "carrier 486 Busy Here — trunk busy / no free channel / DND"
+            elif "resource_exhausted" in _msg or "429" in _msg:
+                _outcome, _reason = "rate_limited", "trunk/LiveKit concurrency or rate limit (429 resource_exhausted)"
+            elif "603" in _msg or "Decline" in _msg or "403" in _msg:
+                _outcome, _reason = "rejected", "carrier declined the call (destination/CLI not permitted)"
+            else:
+                _outcome, _reason = "dial_failed", f"SIP dial error: {_msg[:300]}"
             await _log("error", f"SIP dial FAILED for {phone_number}: {exc}")
+            # Record the failed attempt so it appears in Stats/CRM — otherwise a
+            # call that never connects vanishes (no call_log row is ever written).
+            try:
+                from db import log_call
+                await log_call(phone_number=phone_number, lead_name=lead_name,
+                               outcome=_outcome, reason=_reason, duration_seconds=0)
+            except Exception as _le:
+                logger.warning("could not log failed dial: %s", _le)
+            # Drop the now-useless room immediately instead of letting it linger
+            # for empty_timeout (300s) and tie up project resources.
+            try:
+                await ctx.api.room.delete_room(api.DeleteRoomRequest(room=ctx.room.name))
+            except Exception:
+                pass
             ctx.shutdown()
             return
         await _log("info", f"Call ANSWERED — {phone_number} picked up, starting AI session now")
