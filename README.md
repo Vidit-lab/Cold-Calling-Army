@@ -40,6 +40,15 @@ A full walkthrough — dispatching a call, the live conversation, booking, recor
 
 > The clip is committed as a local asset. For inline playback on GitHub, drag the file into the README via the web editor (GitHub re-hosts it) or attach it to a Release.
 
+### 🖥️ Dashboard Preview
+
+| | |
+|:---:|:---:|
+| ![Dashboard preview 1](DashBoardPreview/Screenshot%20from%202026-06-14%2009-12-46.png) | ![Dashboard preview 2](DashBoardPreview/Screenshot%20from%202026-06-14%2009-13-11.png) |
+| ![Dashboard preview 3](DashBoardPreview/Screenshot%20from%202026-06-14%2009-13-21.png) | ![Dashboard preview 4](DashBoardPreview/Screenshot%20from%202026-06-14%2009-14-17.png) |
+
+> 💡 **Want the full preview?** Copy the [`ui/index.html`](ui/index.html) file and paste it into any HTML viewer.
+
 ---
 
 ## 3. 🏗️ Architecture Overview
